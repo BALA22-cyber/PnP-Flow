@@ -109,8 +109,8 @@ class DataLoaders:
                 shuffle=True,
                 collate_fn=custom_collate, drop_last=True)
 
-        elif self.dataset_name in ['haadf', 'haadf2', 'haadf21','graphne2']:
-            # HAADF microscopy patches saved as .npy files.
+        elif self.dataset_name in ['haadf', 'haadf2', 'haadf21', 'graphne2', 'sem_nffa']:
+            # Grayscale microscopy patches saved as .npy files.
             # Expected directory layout:
             #   ./data/<dataset>/train/*.npy
             #   ./data/<dataset>/val/*.npy
@@ -245,7 +245,7 @@ class AFHQDataset(Dataset):
 
 
 class HAADFNpyDataset(Dataset):
-    """HAADF microscopy patch dataset saved as .npy files.
+    """Grayscale microscopy patch dataset saved as .npy files.
 
     The repository's natural-image datasets return tensors in C x H x W.
     This dataset expects each .npy file to contain either H x W or 1 x H x W,
@@ -256,7 +256,7 @@ class HAADFNpyDataset(Dataset):
         self.data_dir = data_dir
         if not os.path.isdir(data_dir):
             raise FileNotFoundError(
-                f"HAADF directory not found: {data_dir}. Expected .npy patches under train/val/test.")
+                f"Microscopy directory not found: {data_dir}. Expected .npy patches under train/val/test.")
         self.files = sorted([
             f for f in os.listdir(data_dir)
             if f.lower().endswith('.npy')
@@ -278,7 +278,7 @@ class HAADFNpyDataset(Dataset):
             if arr.shape[-1] == 1:
                 arr = np.transpose(arr, (2, 0, 1))
             else:
-                raise ValueError(f"Expected grayscale HAADF patch, got shape {arr.shape} in {path}")
+                raise ValueError(f"Expected grayscale patch, got shape {arr.shape} in {path}")
         elif arr.ndim != 3:
             raise ValueError(f"Expected H x W or 1 x H x W array, got shape {arr.shape} in {path}")
 
