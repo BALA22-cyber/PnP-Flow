@@ -133,19 +133,19 @@ def main():
         print('Training...')
         data_loaders = DataLoaders(
             args.dataset, args.batch_size_train, args.batch_size_train).load_data()
-        if args.model == "ot":
+        if args.model == "ot" or args.model == "indep":
             generative_method = FLOW_MATCHING(model, device, args)
         elif args.model == "gradient_step":
             generative_method = GRADIENT_STEP_DENOISER(model, device, args)
         else:
             raise ValueError(
-                "Model not implemented yet: you can choose between 'ot' and 'gradient_step'")
+                "Model not implemented yet: you can choose between 'ot', 'indep', and 'gradient_step'")
         generative_method.train(data_loaders)
         print('Training done!')
 
     if args.eval:
 
-        if args.model == "ot" or args.model == "gradient_step":
+        if args.model in {"ot", "indep", "gradient_step"}:
             model_path = resolve_model_checkpoint(args)
             load_model(args.model, model, state, download=False,
                        checkpoint_path=model_path, dataset=None,  device=device)

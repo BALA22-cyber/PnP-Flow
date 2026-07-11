@@ -38,7 +38,7 @@ from torchvision.utils import save_image
 
 img_dir_celeba = './data/celeba/img_align_celeba/'
 partition_csv_celeba = './data/celeba/list_eval_partition.csv'
-img_dir_afhq = '.data/afhq_cat/test/cat/'
+img_dir_afhq = './data/afhq_cat/test/cat/'
 
 
 def _is_dist_ready():
@@ -67,6 +67,7 @@ class FLOW_MATCHING(object):
         self.args = args
         self.lr = args.lr
         self.model = model.to(device)
+        self.coupling = self.args.model
 
     def train_FM_model(self, train_loader, opt, num_epoch):
 
@@ -87,7 +88,7 @@ class FLOW_MATCHING(object):
                 img_dir_celeba, partition_csv_celeba, partition=2, transform=transforms.Compose([transforms.CenterCrop(178), transforms.Resize([self.args.dim_image, self.args.dim_image]),])), name=f"celeba{self.args.dim_image}_test")
         elif ft_extractor is not None and self.args.dataset == "afhq_cat":
             test_feat = AFHQDataset(
-                img_dir_afhq, batchsize=self.batch_size_test, transform = transforms.Compose([transforms.Resize((256, 256)),
+                img_dir_afhq, batchsize=self.args.batch_size_test, transform = transforms.Compose([transforms.Resize((256, 256)),
                 transforms.ToTensor()]))
         elif _is_main_process(self.args) and self.args.dataset not in ["celeba", "afhq_cat"]:
             print(f"Skipping FID feature extraction for custom dataset {self.args.dataset}.")
@@ -124,20 +125,24 @@ class FLOW_MATCHING(object):
                 t1 = torch.rand(x.shape[0], 1, 1, 1, device=self.device)
 
                 # compute coupling
-                x0 = z.clone()
-                x1 = x.clone()
-                a, b = np.ones(len(x0)) / len(x0), np.ones(len(x0)) / len(x0)
+                if self.coupling == "ot":
+                    x0 = z.clone()
+                    x1 = x.clone()
+                    a, b = np.ones(len(x0)) / len(x0), np.ones(len(x0)) / len(x0)
 
-                M = ot.dist(x0.view(len(x0), -1).cpu().data.numpy(),
+                    M = ot.dist(x0.view(len(x0), -1).cpu().data.numpy(),
                             x1.view(len(x1), -1).cpu().data.numpy())
-                plan = ot.emd(a, b, M)
-                p = plan.flatten()
-                p = p / p.sum()
-                choices = np.random.choice(
-                    plan.shape[0] * plan.shape[1], p=p, size=len(x0), replace=True)
-                i, j = np.divmod(choices, plan.shape[1])
-                x0 = x0[i]
-                x1 = x1[j]
+                    plan = ot.emd(a, b, M)
+                    p = plan.flatten()
+                    p = p / p.sum()
+                    choices = np.random.choice(
+                        plan.shape[0] * plan.shape[1], p=p, size=len(x0), replace=True)
+                    i, j = np.divmod(choices, plan.shape[1])
+                    x0 = x0[i]
+                    x1 = x1[j]
+                else:
+                    x0 = z
+                    x1 = x
                 xt = t1 * x1 + (1 - t1) * x0
                 loss = torch.sum(
                     (self.model(xt, t1.squeeze()) - (x1 - x0))**2) / x.shape[0]
@@ -241,7 +246,7 @@ class FLOW_MATCHING(object):
 
         images = torch.cat(images_list, dim=0)
         return images
-    
+
     def compute_fid(self, num_images_fid, train_feat, ft_extractor, batch_size=512, integration_method="dopri5", integration_steps=100,  epoch='final'):
         gen_images = self.generate_samples(integration_method=integration_method, tol=1e-4,
                                            n_samples=num_images_fid, batch_size=batch_size, integration_steps=integration_steps)

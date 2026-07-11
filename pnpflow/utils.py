@@ -578,7 +578,7 @@ def postprocess(img, args):
             config = get_config_afhq_cat()
             # inverse_scaler = datasets.get_data_inverse_scaler(config)
         img = (img + 1.) / 2.
-    if args.model == "ot" or args.model == "gradient_step" or args.model == "diffusion":
+    if args.model in {"ot", "indep", "gradient_step", "diffusion"}:
         # Training transforms normalize image tensors to [-1, 1]. Convert back
         # to [0, 1] directly for visualization/metric code.
         img = (img + 1) / 2
