@@ -88,8 +88,9 @@ class PNP_FLOW(object):
             noisy_img, clean_img = noisy_img.to(
                 self.device), clean_img.to('cpu')
 
-            # intialize the image with the adjoint operator
-            x = H_adj(torch.ones_like(noisy_img)).to(self.device)
+            # Initialize with the adjoint observation. For inpainting this is the
+            # observed image with missing pixels set to zero.
+            x = H_adj(noisy_img.clone()).to(self.device)
 
             if self.args.compute_time:
                 torch.cuda.synchronize()
@@ -117,7 +118,14 @@ class PNP_FLOW(object):
                         x_new += self.denoiser(z_tilde, t1)
 
                     x_new /= num_samples
-                    x = x_new
+
+                    # For inpainting, enforce hard data consistency: measured
+                    # HAADF pixels must not be modified by the learned prior.
+                    if 'inpainting' in self.args.problem:
+                        known_mask = H_adj(torch.ones_like(noisy_img)).to(self.device)
+                        x = known_mask * noisy_img + (1 - known_mask) * x_new
+                    else:
+                        x = x_new
 
                     if self.args.compute_time:
                         torch.cuda.synchronize()
@@ -132,6 +140,8 @@ class PNP_FLOW(object):
                             #     clean_img, noisy_img, restored_img, self.args, H_adj, iter=iteration)
                             utils.compute_psnr(clean_img, noisy_img,
                                                restored_img, self.args, H_adj, iter=iteration)
+                            if 'inpainting' in self.args.problem:
+                                utils.compute_masked_psnr(clean_img, restored_img, self.args, H_adj, iter=iteration)
                             utils.compute_ssim(
                                 clean_img, noisy_img, restored_img, self.args, H_adj, iter=iteration)
                             utils.compute_lpips(clean_img, noisy_img,
@@ -156,6 +166,8 @@ class PNP_FLOW(object):
                                   self.args, H_adj, iter='final')
                 utils.compute_psnr(clean_img, noisy_img,
                                    restored_img, self.args, H_adj, iter=iteration)
+                if 'inpainting' in self.args.problem:
+                    utils.compute_masked_psnr(clean_img, restored_img, self.args, H_adj, iter=iteration)
                 utils.compute_ssim(
                     clean_img, noisy_img, restored_img, self.args, H_adj, iter=iteration)
                 utils.compute_lpips(clean_img, noisy_img,
@@ -163,6 +175,8 @@ class PNP_FLOW(object):
 
         if self.args.save_results:
             utils.compute_average_psnr(self.args)
+            if 'inpainting' in self.args.problem:
+                utils.compute_average_masked_psnr(self.args)
             utils.compute_average_ssim(self.args)
             utils.compute_average_lpips(self.args)
         if self.args.compute_memory:

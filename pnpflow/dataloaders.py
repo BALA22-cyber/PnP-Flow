@@ -109,6 +109,34 @@ class DataLoaders:
                 shuffle=True,
                 collate_fn=custom_collate, drop_last=True)
 
+        elif self.dataset_name in ['haadf', 'haadf2', 'haadf21','graphne2']:
+            # HAADF microscopy patches saved as .npy files.
+            # Expected directory layout:
+            #   ./data/<dataset>/train/*.npy
+            #   ./data/<dataset>/val/*.npy
+            #   ./data/<dataset>/test/*.npy
+            base_dir = f'./data/{self.dataset_name}'
+            train_dataset = HAADFNpyDataset(os.path.join(base_dir, 'train'))
+            val_dataset = HAADFNpyDataset(os.path.join(base_dir, 'val'))
+            test_dataset = HAADFNpyDataset(os.path.join(base_dir, 'test'))
+
+            train_loader = DataLoader(
+                train_dataset,
+                batch_size=self.batch_size_train,
+                shuffle=True,
+                collate_fn=custom_collate,
+                drop_last=True)
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=self.batch_size_test,
+                shuffle=False,
+                collate_fn=custom_collate)
+            test_loader = DataLoader(
+                test_dataset,
+                batch_size=self.batch_size_test,
+                shuffle=False,
+                collate_fn=custom_collate)
+
         else:
             raise ValueError("The dataset your entered does not exist")
 
@@ -120,7 +148,8 @@ class DataLoaders:
 
 class CelebADataset(Dataset):
     def __init__(self, img_dir, partition_csv, partition, transform=None):
-        self.img_dir = img_dir
+        nested_img_dir = os.path.join(img_dir, 'img_align_celeba')
+        self.img_dir = nested_img_dir if os.path.isdir(nested_img_dir) else img_dir
         self.transform = transform
         self.partition = partition
 
@@ -128,8 +157,18 @@ class CelebADataset(Dataset):
         partition_df = pd.read_csv(
             partition_csv, header=0, names=[
                 'image', 'partition'], skiprows=1)
-        self.img_names = partition_df[partition_df['partition']
-                                      == partition]['image'].values
+        img_names = partition_df[partition_df['partition']
+                                 == partition]['image'].values
+        self.img_names = [
+            img_name for img_name in img_names
+            if os.path.exists(os.path.join(self.img_dir, img_name))
+        ]
+        skipped = len(img_names) - len(self.img_names)
+        if skipped > 0:
+            warnings.warn(
+                f"CelebA partition {partition}: skipped {skipped} missing files. "
+                f"Using {len(self.img_names)} files from {self.img_dir}."
+            )
 
     def __len__(self):
         return len(self.img_names)
@@ -137,11 +176,6 @@ class CelebADataset(Dataset):
     def __getitem__(self, idx):
         img_name = self.img_names[idx]
         img_path = os.path.join(self.img_dir, img_name)
-
-        if not os.path.exists(img_path):
-            warnings.warn(f"File not found: {img_path}. Skipping.")
-            return None, None
-
         image = Image.open(img_path).convert('RGB')
 
         if self.transform:
@@ -208,6 +242,49 @@ class AFHQDataset(Dataset):
             image = self.transform(image)
 
         return image, 0
+
+
+class HAADFNpyDataset(Dataset):
+    """HAADF microscopy patch dataset saved as .npy files.
+
+    The repository's natural-image datasets return tensors in C x H x W.
+    This dataset expects each .npy file to contain either H x W or 1 x H x W,
+    preferably already normalized to [-1, 1]. Values are clipped for safety.
+    """
+
+    def __init__(self, data_dir):
+        self.data_dir = data_dir
+        if not os.path.isdir(data_dir):
+            raise FileNotFoundError(
+                f"HAADF directory not found: {data_dir}. Expected .npy patches under train/val/test.")
+        self.files = sorted([
+            f for f in os.listdir(data_dir)
+            if f.lower().endswith('.npy')
+        ])
+        if len(self.files) == 0:
+            raise FileNotFoundError(f"No .npy patch files found in {data_dir}")
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        path = os.path.join(self.data_dir, self.files[idx])
+        arr = np.load(path).astype(np.float32)
+
+        if arr.ndim == 2:
+            arr = arr[None, :, :]
+        elif arr.ndim == 3 and arr.shape[0] != 1:
+            # If someone saved H x W x 1, convert to 1 x H x W.
+            if arr.shape[-1] == 1:
+                arr = np.transpose(arr, (2, 0, 1))
+            else:
+                raise ValueError(f"Expected grayscale HAADF patch, got shape {arr.shape} in {path}")
+        elif arr.ndim != 3:
+            raise ValueError(f"Expected H x W or 1 x H x W array, got shape {arr.shape} in {path}")
+
+        # PnP-Flow OT model convention: data in [-1, 1].
+        arr = np.clip(arr, -1.0, 1.0)
+        return torch.from_numpy(arr).float(), 0
 
 
 def custom_collate(batch):

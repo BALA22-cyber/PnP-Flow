@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 import random
 import argparse
 import torch
@@ -21,6 +22,33 @@ from pnpflow.utils import gaussian_blur, define_model, load_model
 import warnings
 warnings.filterwarnings("ignore", module="matplotlib\\..*")
 
+
+def make_haadf_known_mask(kind, dim, device='cpu', radius=16, line_width=8, random_missing_fraction=0.15, seed=0):
+    """Return known_mask with shape 1 x 1 x dim x dim for synthetic HAADF tests.
+
+    known_mask = 1 means observed/known pixel; 0 means missing pixel.
+    """
+    g = torch.Generator(device='cpu')
+    g.manual_seed(seed)
+    known = torch.ones(1, 1, dim, dim, device=device)
+
+    if kind == 'blob':
+        yy, xx = torch.meshgrid(torch.arange(dim, device=device), torch.arange(dim, device=device), indexing='ij')
+        cy, cx = dim // 2, dim // 2
+        missing = (yy - cy) ** 2 + (xx - cx) ** 2 <= radius ** 2
+        known[:, :, missing] = 0
+    elif kind == 'line':
+        c = dim // 2
+        half = max(1, line_width // 2)
+        known[:, :, max(0, c-half):min(dim, c+half), :] = 0
+    elif kind == 'random':
+        rand = torch.rand((1, 1, dim, dim), generator=g, device=device)
+        known = (rand > random_missing_fraction).float()
+    else:
+        raise ValueError(f'Unknown HAADF mask kind: {kind}')
+
+    return known.float()
+
 torch.cuda.empty_cache()
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -30,7 +58,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Main')
     cfg = load_cfg_from_cfg_file('./' + 'config/main_config.yaml')
     parser.add_argument('--opts', default=None, nargs=argparse.REMAINDER)
+    parser.add_argument(
+        '--no_cap',
+        action='store_true',
+        help='Train over the full DataLoader instead of stopping after 21 batches per epoch.',
+    )
     args = parser.parse_args()
+    cfg.no_cap = args.no_cap
     if args.opts is not None:
         cfg = merge_cfg_from_list(cfg, args.opts)
 
@@ -54,6 +88,31 @@ def parse_args() -> argparse.Namespace:
     for key in method_cfg.keys():
         cfg.dict_cfg_method[key] = cfg[key]
     return cfg
+
+
+def resolve_model_checkpoint(args):
+    base_dir = os.path.join(args.root, 'model', args.dataset, args.model)
+    model_run = getattr(args, 'model_run', None)
+    if model_run in [None, 'None', '']:
+        latest_file = os.path.join(base_dir, 'latest_run.txt')
+        if os.path.exists(latest_file):
+            with open(latest_file, 'r') as file:
+                model_run = file.read().strip()
+
+    filename = 'gradient_step_denoiser_final.pt' if args.model == 'gradient_step' else 'model_final.pt'
+    candidates = []
+    if model_run not in [None, 'None', '']:
+        candidates.append(os.path.join(base_dir, model_run, filename))
+    candidates.append(os.path.join(base_dir, filename))
+
+    for checkpoint_path in candidates:
+        if os.path.exists(checkpoint_path):
+            print(f'Loading checkpoint: {checkpoint_path}')
+            return checkpoint_path
+
+    raise FileNotFoundError(
+        f'No checkpoint found for dataset={args.dataset}, model={args.model}. '
+        f'Checked: {candidates}')
 
 
 def main():
@@ -87,9 +146,7 @@ def main():
     if args.eval:
 
         if args.model == "ot" or args.model == "gradient_step":
-            model_path = args.root + \
-                'model/{}/{}/model_final.pt'.format(
-                    args.dataset, args.model)
+            model_path = resolve_model_checkpoint(args)
             load_model(args.model, model, state, download=False,
                        checkpoint_path=model_path, dataset=None,  device=device)
             model.eval()
@@ -150,6 +207,22 @@ def main():
             p = 0.7
             degradation = RandomInpainting(p)
 
+        elif args.problem in ["haadf_blob_inpainting", "haadf_line_inpainting", "haadf_random_inpainting"]:
+            # Fixed synthetic masks for controlled HAADF inpainting benchmarks.
+            # These are preferable to randomly regenerated masks because H and H_adj
+            # must use the same operator.
+            if args.noise_type == 'laplace':
+                sigma_noise = 0.03
+            elif args.noise_type == 'gaussian':
+                sigma_noise = 0.01
+            if args.problem == "haadf_blob_inpainting":
+                known_mask = make_haadf_known_mask('blob', args.dim_image, device=device, radius=max(8, args.dim_image // 8), seed=args.seed or 0)
+            elif args.problem == "haadf_line_inpainting":
+                known_mask = make_haadf_known_mask('line', args.dim_image, device=device, line_width=max(4, args.dim_image // 16), seed=args.seed or 0)
+            else:
+                known_mask = make_haadf_known_mask('random', args.dim_image, device=device, random_missing_fraction=0.15, seed=args.seed or 0)
+            degradation = FixedMaskInpainting(known_mask)
+
         elif args.problem == "superresolution":
             if args.dim_image == 128:
                 print('Superresolution with scale factor 2')
@@ -183,16 +256,22 @@ def main():
         print('sigma_noise', sigma_noise)
         data_loaders = DataLoaders(
             args.dataset, args.batch_size_ip, args.batch_size_ip).load_data()
-        if args.noise_type == 'laplace':
-            args.save_path = os.path.join(
-                args.root, 'results_laplace', args.dataset, args.model, args.problem, args.method, args.eval_split)
-        elif args.noise_type == 'gaussian':
-            args.save_path = os.path.join(
-                args.root, 'results', args.dataset, args.model, args.problem, args.method, args.eval_split)
-        try:
-            os.makedirs(args.save_path)
-        except FileExistsError:
-            pass
+        eval_run_name = getattr(args, 'eval_run_name', None)
+        if eval_run_name in [None, 'None', '']:
+            eval_run_name = (
+                datetime.now().strftime('%Y%m%d_%H%M%S')
+                + f'_{args.dataset}_{args.model}_{args.problem}_{args.method}_{args.eval_split}'
+            )
+        args.eval_run_name = eval_run_name
+
+        results_root = 'results_laplace' if args.noise_type == 'laplace' else 'results'
+        eval_base_path = os.path.join(
+            args.root, results_root, args.dataset, args.model, args.problem, args.method, args.eval_split)
+        os.makedirs(eval_base_path, exist_ok=True)
+        args.save_path = os.path.join(eval_base_path, eval_run_name)
+        os.makedirs(args.save_path, exist_ok=True)
+        with open(os.path.join(eval_base_path, 'latest_eval_run.txt'), 'w') as file:
+            file.write(eval_run_name + '\n')
 
         if args.method == 'pnp_flow':
             method = PNP_FLOW(model, device, args)

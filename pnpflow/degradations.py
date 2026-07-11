@@ -52,6 +52,38 @@ class PaintbrushInpainting(Degradation):
         return paintbrush_mask(x)
 
 
+class FixedMaskInpainting(Degradation):
+    """Inpainting with a fixed known-pixel mask.
+
+    known_mask convention:
+      1 / True  = observed pixel, keep data-consistent
+      0 / False = missing pixel, reconstruct
+
+    The mask may be shape 1x1xHxW or BxCxHxW and is broadcast/repeated
+    to match the input batch and channels.
+    """
+
+    def __init__(self, known_mask):
+        super().__init__()
+        if known_mask.ndim != 4:
+            raise ValueError("known_mask must have shape B x C x H x W or 1 x 1 x H x W")
+        self.known_mask = known_mask.float()
+
+    def _mask_like(self, x):
+        mask = self.known_mask.to(device=x.device, dtype=x.dtype)
+        if mask.shape[0] == 1 and x.shape[0] != 1:
+            mask = mask.repeat(x.shape[0], 1, 1, 1)
+        if mask.shape[1] == 1 and x.shape[1] != 1:
+            mask = mask.repeat(1, x.shape[1], 1, 1)
+        return mask
+
+    def H(self, x):
+        return self._mask_like(x) * x
+
+    def H_adj(self, x):
+        return self._mask_like(x) * x
+
+
 class GaussianDeblurring(Degradation):
     def __init__(self, sigma_blur, kernel_size,  mode="fft", num_channels=3, dim_image=128, device="cuda") -> None:
         super().__init__()

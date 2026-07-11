@@ -400,35 +400,37 @@ def save_samples(samples, train_samples, path, args):
 
     samples = samples.clone().permute(0, 2, 3, 1).cpu().data.numpy()
     train_samples = train_samples.clone().permute(0, 2, 3, 1).cpu().data.numpy()
-    batch_samples_size = samples.shape[0]
-    cols = int(math.sqrt(batch_samples_size))  # Number of columns
-    rows = int(batch_samples_size / cols)   # Number of rows
-    fig, ax = plt.subplots(rows, 2 * cols, figsize=(20, 20))
-    for i in range(rows):
-        for j in range(cols):
-            if args.num_channels == 1:
-                ax[i, j].imshow(samples[i + j * rows].squeeze(-1),
-                                cmap='gray', vmin=0, vmax=1)
-            else:
-                ax[i, j].imshow(samples[i + j * rows])
-    for i in range(rows):
-        for j in range(cols, 2*cols+1):
-            if i+(j - cols)*rows < train_samples.shape[0]:
-                if args.num_channels == 1:
-                    ax[i, j].imshow(train_samples[i+(j - cols)*rows].squeeze(-1),
-                                    cmap='gray', vmin=0, vmax=1)
-                else:
-                    ax[i, j].imshow(train_samples[i+(j - cols)*rows])
+    samples = np.clip(samples, 0, 1)
+    train_samples = np.clip(train_samples, 0, 1)
+    batch_samples_size = min(samples.shape[0], train_samples.shape[0])
+    samples = samples[:batch_samples_size]
+    train_samples = train_samples[:batch_samples_size]
+    cols = max(1, int(math.ceil(math.sqrt(batch_samples_size))))
+    rows = int(math.ceil(batch_samples_size / cols))
+    fig, ax = plt.subplots(rows, 2 * cols, figsize=(20, 20), squeeze=False)
+
+    for idx in range(batch_samples_size):
+        i = idx // cols
+        j = idx % cols
+        if args.num_channels == 1:
+            ax[i, j].imshow(samples[idx].squeeze(-1),
+                            cmap='gray', vmin=0, vmax=1)
+            ax[i, j + cols].imshow(train_samples[idx].squeeze(-1),
+                                   cmap='gray', vmin=0, vmax=1)
+        else:
+            ax[i, j].imshow(samples[idx])
+            ax[i, j + cols].imshow(train_samples[idx])
     ax[0, 0].set_title("Model samples")
     ax[0, cols].set_title("Training samples")
 
     for ax_ in ax.flatten():
         ax_.set_xticks([])
         ax_.set_yticks([])
+        if not ax_.has_data():
+            ax_.axis('off')
 
     plt.savefig(path),
     plt.close(fig)
-
 
 def save_images(clean_img, noisy_img, rec_img, args, H_adj, iter='final'):
 
@@ -451,7 +453,10 @@ def save_images(clean_img, noisy_img, rec_img, args, H_adj, iter='final'):
     if iter != 'final':
         if batch_size == 1:
             fig = plt.figure()
-            plt.imshow(rec_img[0])
+            if args.num_channels == 1:
+                plt.imshow(rec_img[0].squeeze(-1).numpy(), cmap='gray', vmin=0, vmax=1)
+            else:
+                plt.imshow(rec_img[0])
         elif batch_size == 2:
             fig, ax = plt.subplots(1, 2)
             ax[0].imshow(rec_img[0].numpy())
@@ -483,7 +488,10 @@ def save_images(clean_img, noisy_img, rec_img, args, H_adj, iter='final'):
 
             if batch_size == 1:
                 fig = plt.figure()
-                plt.imshow(img[0].numpy())
+                if args.num_channels == 1:
+                    plt.imshow(img[0].squeeze(-1).numpy(), cmap='gray', vmin=0, vmax=1)
+                else:
+                    plt.imshow(img[0].numpy())
             elif batch_size == 2:
                 fig, ax = plt.subplots(1, 2)
                 ax[0].imshow(img[0].numpy())
@@ -527,7 +535,10 @@ def save_images(clean_img, noisy_img, rec_img, args, H_adj, iter='final'):
                 for k, img in enumerate([clean_img, noisy_img, rec_img]):
 
                     fig = plt.figure()
-                    plt.imshow(img[i])
+                    if args.num_channels == 1:
+                        plt.imshow(img[i].squeeze(-1).numpy(), cmap='gray', vmin=0, vmax=1)
+                    else:
+                        plt.imshow(img[i])
                     plt.axis('off')
                     if k == 0 and args.method == 'pnp_flow':
                         plt.savefig(os.path.join(args.save_path_ip, f"{args.problem}_{list_word[k]}_batch{args.batch}_im{i}.eps"),
@@ -568,12 +579,9 @@ def postprocess(img, args):
             # inverse_scaler = datasets.get_data_inverse_scaler(config)
         img = (img + 1.) / 2.
     if args.model == "ot" or args.model == "gradient_step" or args.model == "diffusion":
-        if args.dataset == "afhq_cat":
-            img = (img + 1) / 2
-        else:
-            invTrans = v2.Normalize(
-                mean=[-0.5 / 0.5, -0.5 / 0.5, -0.5 / 0.5], std=[1./0.5, 1./0.5, 1./0.5])
-            img = invTrans(img)
+        # Training transforms normalize image tensors to [-1, 1]. Convert back
+        # to [0, 1] directly for visualization/metric code.
+        img = (img + 1) / 2
     return img
 
 
@@ -615,14 +623,70 @@ def compute_psnr(clean_img, noisy_img, rec_img, args, H_adj, iter='final'):
         args.save_path_ip, f'psnr_rec_batch{args.batch}.txt')
 
     with open(rec_filename, 'a') as file:
-        file.write(f'{iter} {psnr_rec}\n')
+        file.write(f'{iter} {psnr_rec.mean().item()}\n')
 
     # Save PSNR noisy values
     noisy_filename = os.path.join(
         args.save_path_ip, f'psnr_noisy_batch{args.batch}.txt')
 
     with open(noisy_filename, 'a') as file:
-        file.write(f'{iter} {psnr_noisy}\n')
+        file.write(f'{iter} {psnr_noisy.mean().item()}\n')
+
+
+def compute_masked_psnr(clean_img, rec_img, args, H_adj, iter='final'):
+    """Compute PSNR only on missing inpainting pixels.
+
+    This is the key synthetic-mask benchmark metric for HAADF inpainting.
+    H_adj(ones) is the known-pixel mask, so missing_mask = 1 - known_mask.
+    """
+    clean_img = postprocess(clean_img.clone(), args)
+    rec_img = postprocess(rec_img.clone(), args)
+    known_mask = H_adj(torch.ones_like(rec_img)).detach().cpu()
+    missing_mask = (1.0 - known_mask).clamp(0, 1)
+
+    clean_img = clean_img.detach().cpu()
+    rec_img = rec_img.detach().cpu()
+    missing = missing_mask.expand_as(clean_img)
+
+    denom = missing.sum(dim=(1, 2, 3)).clamp_min(1.0)
+    mse = (((clean_img - rec_img) ** 2) * missing).sum(dim=(1, 2, 3)) / denom
+    psnr = 10.0 * torch.log10(torch.tensor(1.0) / mse.clamp_min(1e-12))
+
+    rec_filename = os.path.join(args.save_path_ip, f'masked_psnr_rec_batch{args.batch}.txt')
+    with open(rec_filename, 'a') as file:
+        file.write(f'{iter} {psnr.mean().item()}\n')
+
+
+def compute_average_masked_psnr(args):
+    psnr_by_iteration = defaultdict(list)
+    for batch in range(args.max_batch):
+        filename = os.path.join(args.save_path_ip, f'masked_psnr_rec_batch{batch}.txt')
+        if not os.path.exists(filename):
+            continue
+        with open(filename, 'r') as f:
+            for line in f:
+                iteration, psnr = map(float, line.strip().split())
+                psnr_by_iteration[int(iteration)].append(psnr)
+
+    if not psnr_by_iteration:
+        return
+
+    avg_filename = os.path.join(args.save_path_ip, 'masked_psnr_rec_average.txt')
+    with open(avg_filename, 'w') as f:
+        for iteration, values in sorted(psnr_by_iteration.items()):
+            f.write(f'{iteration} {np.mean(values):.4f}\n')
+
+    with open(os.path.join(args.save_path, 'final_masked_psnr.txt'), 'a') as file:
+        if os.stat(os.path.join(args.save_path, 'final_masked_psnr.txt')).st_size == 0:
+            file.write('masked_psnr_rec ')
+            for key in args.dict_cfg_method.keys():
+                file.write(f'{key} ')
+            file.write('\n')
+        final_value = np.mean(psnr_by_iteration[max(psnr_by_iteration.keys())])
+        file.write(f'{final_value} ')
+        for value in args.dict_cfg_method.values():
+            file.write(f'{value} ')
+        file.write('\n')
 
 
 def compute_average_psnr(args):
@@ -675,6 +739,16 @@ def compute_average_psnr(args):
 
 
 def compute_lpips(clean_img, noisy_img, rec_img, args, H_adj, iter='final'):
+
+    if getattr(args, 'num_channels', 3) == 1:
+        # LPIPS/AlexNet is an RGB natural-image metric. For HAADF grayscale,
+        # skip the expensive model download and record NaN placeholders so the
+        # repo's averaging code still completes.
+        for word in ['rec', 'noisy']:
+            filename = os.path.join(args.save_path_ip, f'lpips_{word}_batch{args.batch}.txt')
+            with open(filename, 'a') as file:
+                file.write(f'{iter} nan\n')
+        return
 
     # Download the LPIPS model if it is not already available
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

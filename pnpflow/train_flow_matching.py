@@ -11,7 +11,9 @@
 # (https://github.com/JChemseddine/Conditional_Wasserstein_Distances/blob/main/utils/utils_FID.py)
 
 import torch
+import torch.distributed as dist
 import os
+from datetime import datetime
 import skimage.io as io
 import numpy as np
 import torch
@@ -23,8 +25,12 @@ from torchdiffeq import odeint_adjoint as odeint
 import pnpflow.fid_score as fs
 from pnpflow.dataloaders import DataLoaders
 import pnpflow.utils as utils
-from fld.metrics.FID import FID
-from fld.features.InceptionFeatureExtractor import InceptionFeatureExtractor
+try:
+    from fld.metrics.FID import FID
+    from fld.features.InceptionFeatureExtractor import InceptionFeatureExtractor
+except ModuleNotFoundError:
+    FID = None
+    InceptionFeatureExtractor = None
 from pnpflow.dataloaders import CelebADataset, AFHQDataset
 from torchvision import transforms
 from torchvision.utils import save_image
@@ -33,6 +39,23 @@ from torchvision.utils import save_image
 img_dir_celeba = './data/celeba/img_align_celeba/'
 partition_csv_celeba = './data/celeba/list_eval_partition.csv'
 img_dir_afhq = '.data/afhq_cat/test/cat/'
+
+
+def _is_dist_ready():
+    return dist.is_available() and dist.is_initialized()
+
+
+def _is_main_process(args):
+    return getattr(args, 'rank', 0) == 0
+
+
+def _barrier_if_needed():
+    if _is_dist_ready():
+        dist.barrier()
+
+
+def _unwrap_model(model):
+    return model.module if hasattr(model, 'module') else model
 
 
 class FLOW_MATCHING(object):
@@ -47,26 +70,48 @@ class FLOW_MATCHING(object):
 
     def train_FM_model(self, train_loader, opt, num_epoch):
 
-        ft_extractor = InceptionFeatureExtractor(save_path="features")
-        if self.args.dataset == "celeba":
+        ft_extractor = None
+        test_feat = None
+        if (_is_main_process(self.args)
+                and self.args.dataset in ["celeba", "afhq_cat"]
+                and InceptionFeatureExtractor is not None):
+            ft_extractor = InceptionFeatureExtractor(save_path="features")
+        elif _is_main_process(self.args) and self.args.dataset in ["celeba", "afhq_cat"]:
+            print(
+                "Skipping FID feature extraction because optional package 'fld' "
+                "is not installed. Training will continue."
+            )
+
+        if ft_extractor is not None and self.args.dataset == "celeba":
             test_feat = ft_extractor.get_features(CelebADataset(
                 img_dir_celeba, partition_csv_celeba, partition=2, transform=transforms.Compose([transforms.CenterCrop(178), transforms.Resize([self.args.dim_image, self.args.dim_image]),])), name=f"celeba{self.args.dim_image}_test")
-        elif self.args.dataset == "afhq_cat":
+        elif ft_extractor is not None and self.args.dataset == "afhq_cat":
             test_feat = AFHQDataset(
                 img_dir_afhq, batchsize=self.batch_size_test, transform = transforms.Compose([transforms.Resize((256, 256)),
                 transforms.ToTensor()]))
-        else:
-            raise ValueError(f"Unknown dataset {self.args.dataset}")
-            
+        elif _is_main_process(self.args) and self.args.dataset not in ["celeba", "afhq_cat"]:
+            print(f"Skipping FID feature extraction for custom dataset {self.args.dataset}.")
 
-        tq = tqdm(range(num_epoch), desc='loss')
+        num_batches = len(train_loader) if hasattr(train_loader, '__len__') else None
+        num_samples = len(train_loader.dataset) if hasattr(train_loader, 'dataset') else None
+        if _is_main_process(self.args):
+            print(
+                f"Training loader: samples={num_samples}, batches={num_batches}, "
+                f"batch_size={self.args.batch_size_train}, no_cap={getattr(self.args, 'no_cap', False)}",
+                flush=True,
+            )
+
+        tq = tqdm(range(num_epoch), desc='loss', disable=not _is_main_process(self.args))
         for ep in tq:
+            if hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'):
+                train_loader.sampler.set_epoch(ep)
             for iteration, (x, labels) in enumerate(train_loader):
                 if x.size(0) == 0:
                     continue
-                if iteration > 20:
+                if not getattr(self.args, 'no_cap', False) and iteration > 20:
                     break
-                print(f'Epoch: {ep}, iter: {iteration}')
+                if _is_main_process(self.args):
+                    print(f'Epoch: {ep}, iter: {iteration}', flush=True)
                 x = x.to(self.device)
                 z = torch.randn(
                     x.shape[0],
@@ -101,29 +146,39 @@ class FLOW_MATCHING(object):
                 opt.step()
 
                 # save loss in txt file
-                with open(self.save_path + 'loss_training.txt', 'a') as file:
-                    file.write(
-                        f'Epoch: {ep}, iter: {iteration}, Loss: {loss.item()}\n')
+                if _is_main_process(self.args):
+                    with open(self.save_path + 'loss_training.txt', 'a') as file:
+                        file.write(
+                            f'Epoch: {ep}, iter: {iteration}, Loss: {loss.item()}\n')
 
             # save samples, plot them, and compute FID on small dataset
-            self.sample_plot(x, ep)
-            if ep % 5 == 0:
-                # save model
-                torch.save(self.model.state_dict(),
-                           self.model_path + 'model_{}.pt'.format(ep))
-                # evaluate FID
-                print("Computing FID 5K")
-                num_gen = 5_000
-                fid_value = self.compute_fid(num_gen, test_feat,
-                                        ft_extractor, batch_size=124, integration_method="euler", integration_steps=10)
+            if _is_main_process(self.args):
+                self.sample_plot(x, ep)
+                if ep % 5 == 0:
+                    # save model
+                    torch.save(_unwrap_model(self.model).state_dict(),
+                               self.model_path + 'model_{}.pt'.format(ep))
 
-                with open(self.save_path + f'FID_{(num_gen // 1000)}k.txt', 'a') as file:
-                    file.write(f'Epoch: {ep}, FID: {fid_value}\n')
+                    # FID is only meaningful/configured for the original RGB natural-image
+                    # datasets. For custom HAADF microscopy patches, skip it.
+                    if ft_extractor is not None and test_feat is not None:
+                        print("Computing FID 5K")
+                        num_gen = 5_000
+                        fid_value = self.compute_fid(
+                            num_gen, test_feat, ft_extractor, batch_size=124,
+                            integration_method="euler", integration_steps=10)
+
+                        with open(self.save_path + f'FID_{(num_gen // 1000)}k.txt', 'a') as file:
+                            file.write(f'Epoch: {ep}, FID: {fid_value}\n')
+                    else:
+                        with open(self.save_path + 'FID_skipped.txt', 'a') as file:
+                            file.write(f'Epoch: {ep}, FID skipped for dataset {self.args.dataset}\n')
+            _barrier_if_needed()
 
     def apply_flow_matching(self, NO_samples):
         self.model.eval()
         with torch.no_grad():
-            model_class = cnf(self.model)
+            model_class = cnf(_unwrap_model(self.model))
             latent = torch.randn(
                 NO_samples,
                 self.num_channels,
@@ -148,14 +203,12 @@ class FLOW_MATCHING(object):
             pass
 
         reco = utils.postprocess(self.apply_flow_matching(16), self.args)
-        reco = utils.postprocess(reco, self.args)
-        utils.save_samples(reco.detach().cpu(), x[:16].cpu(), self.save_path + 'results_samplings/' +
+        gt = utils.postprocess(x[:16], self.args)
+        utils.save_samples(reco.detach().cpu(), gt.detach().cpu(), self.save_path + 'results_samplings/' +
                            'samplings_ep_{}.pdf'.format(ep), self.args)
 
         # check the plots by saving training samples
         if ep == 0:
-            gt = x[:16]
-            gt = utils.postprocess(gt, self.args)
             utils.save_samples(gt.detach().cpu(), gt.detach().cpu(), self.save_path + 'results_samplings/' +
                                'train_samples_ep_{}.pdf'.format(ep), self.args)
 
@@ -181,7 +234,7 @@ class FLOW_MATCHING(object):
 
                 x0 = torch.randn(batch, num_channels, self.d,
                                  self.d, device=self.device)
-                model_class = cnf(self.model)
+                model_class = cnf(_unwrap_model(self.model))
                 traj = odeint(model_class, x0, time_points, rtol=tol, atol=tol,
                     method=integration_method)
                 images_list.append(traj[-1, :])
@@ -207,40 +260,52 @@ class FLOW_MATCHING(object):
 
     def train(self, data_loaders):
 
-        self.save_path = self.args.root + \
-            'results/{}/ot/'.format(
-                self.args.dataset)
-        try:
-            os.makedirs(self.save_path)
-        except BaseException:
-            pass
+        run_name = getattr(self.args, 'run_name', None)
+        if run_name in [None, 'None', '']:
+            run_name = datetime.now().strftime('%Y%m%d_%H%M%S') + f'_{self.args.dataset}_{self.args.model}'
+        self.args.run_name = run_name
 
-        self.model_path = self.args.root + \
-            'model/{}/ot/'.format(
-                self.args.dataset)
-        try:
-            os.makedirs(self.model_path)
-        except BaseException:
-            pass
+        self.save_path = os.path.join(
+            self.args.root, 'results', self.args.dataset, self.args.model, run_name) + os.sep
+        self.model_path = os.path.join(
+            self.args.root, 'model', self.args.dataset, self.args.model, run_name) + os.sep
+        if _is_main_process(self.args):
+            os.makedirs(self.save_path, exist_ok=True)
+            os.makedirs(self.model_path, exist_ok=True)
+        _barrier_if_needed()
 
         # load model
         train_loader = data_loaders['train']
 
         # create txt file for storing all information about model
-        with open(self.save_path + 'model_info.txt', 'w') as file:
-            file.write(f'PARAMETERS\n')
-            file.write(
-                f'Number of parameters: {sum(p.numel() for p in self.model.parameters())}\n')
-            file.write(f'Number of epochs: {self.args.num_epoch}\n')
-            file.write(f'Batch size: {self.args.batch_size_train}\n')
-            file.write(f'Learning rate: {self.lr}\n')
+        if _is_main_process(self.args):
+            with open(self.save_path + 'model_info.txt', 'w') as file:
+                file.write(f'PARAMETERS\n')
+                file.write(
+                    f'Number of parameters: {sum(p.numel() for p in _unwrap_model(self.model).parameters())}\n')
+                file.write(f'Number of epochs: {self.args.num_epoch}\n')
+                file.write(f'Batch size: {self.args.batch_size_train}\n')
+                file.write(f'Learning rate: {self.lr}\n')
+                file.write(f'Run name: {run_name}\n')
+                file.write(f'Model path: {self.model_path}\n')
+                file.write(f'Results path: {self.save_path}\n')
 
         # start training
         opt = torch.optim.Adam(self.model.parameters(), lr=self.args.lr)
         self.train_FM_model(train_loader, opt, num_epoch=self.args.num_epoch)
 
         # save final model
-        torch.save(self.model.state_dict(), self.model_path + 'model_final.pt')
+        if _is_main_process(self.args):
+            torch.save(_unwrap_model(self.model).state_dict(), self.model_path + 'model_final.pt')
+            for base_dir in [
+                os.path.join(self.args.root, 'results', self.args.dataset, self.args.model),
+                os.path.join(self.args.root, 'model', self.args.dataset, self.args.model),
+            ]:
+                os.makedirs(base_dir, exist_ok=True)
+                with open(os.path.join(base_dir, 'latest_run.txt'), 'w') as file:
+                    file.write(run_name + '\n')
+        _barrier_if_needed()
+
 
 
 class cnf(torch.nn.Module):

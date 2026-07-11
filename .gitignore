@@ -3,6 +3,10 @@ data/
 results/
 *.zip
 *.npy
+*.h5
+*.hdf5
+*.tif
+*.tiff
 *.pth
 *.DS_Store
 demo/model_final_celeba.pt

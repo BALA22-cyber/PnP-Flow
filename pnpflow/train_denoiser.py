@@ -7,6 +7,7 @@ from torch import nn
 from tqdm import tqdm
 import numpy as np
 from matplotlib import pyplot as plt
+from datetime import datetime
 import os
 from torch.optim import Adam
 from torch.optim import lr_scheduler
@@ -223,21 +224,18 @@ class GRADIENT_STEP_DENOISER(object):
 
     def train(self, data_loaders):
 
-        self.save_path = self.args.root + \
-            'results/{}/{}'.format(
-                self.args.dataset, self.args.model)
-        try:
-            os.makedirs(self.save_path)
-        except BaseException:
-            pass
+        run_name = getattr(self.args, 'run_name', None)
+        if run_name in [None, 'None', '']:
+            run_name = datetime.now().strftime('%Y%m%d_%H%M%S') + f'_{self.args.dataset}_{self.args.model}'
+        self.args.run_name = run_name
 
-        self.model_path = self.args.root + \
-            'model/{}/{}'.format(
-                self.args.dataset, self.args.model)
-        try:
-            os.makedirs(self.model_path)
-        except BaseException:
-            pass
+        self.save_path = os.path.join(
+            self.args.root, 'results', self.args.dataset, self.args.model, run_name) + os.sep
+        os.makedirs(self.save_path, exist_ok=True)
+
+        self.model_path = os.path.join(
+            self.args.root, 'model', self.args.dataset, self.args.model, run_name) + os.sep
+        os.makedirs(self.model_path, exist_ok=True)
 
         train_loader = data_loaders['train']
 
@@ -249,8 +247,18 @@ class GRADIENT_STEP_DENOISER(object):
             file.write(f'Number of epochs: {self.args.num_epoch}\n')
             file.write(f'Batch size: {self.args.batch_size_train}\n')
             file.write(f'Learning rate: {self.lr}\n')
+            file.write(f'Run name: {run_name}\n')
+            file.write(f'Model path: {self.model_path}\n')
+            file.write(f'Results path: {self.save_path}\n')
 
         [opt], [scheduler] = self.configure_optimizers()
         self.train_denoiser(train_loader, opt, num_epoch=self.args.num_epoch)
         torch.save(self.model.state_dict(),
                    self.model_path + 'gradient_step_denoiser_final.pt')
+        for base_dir in [
+            os.path.join(self.args.root, 'results', self.args.dataset, self.args.model),
+            os.path.join(self.args.root, 'model', self.args.dataset, self.args.model),
+        ]:
+            os.makedirs(base_dir, exist_ok=True)
+            with open(os.path.join(base_dir, 'latest_run.txt'), 'w') as file:
+                file.write(run_name + '\n')

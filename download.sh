@@ -3,12 +3,12 @@ FILE=$1
 if [ $FILE == "pretrained-network-celeba" ]; then
     OUTPUT_DIR=./model/celeba/ot
     mkdir -p $OUTPUT_DIR
-    gdown --id 1ZZ6S-PGRx-tOPkr4Gt3A6RN-PChabnD6 -O $OUTPUT_DIR/model_final.pt
+    gdown 1ZZ6S-PGRx-tOPkr4Gt3A6RN-PChabnD6 -O $OUTPUT_DIR/model_final.pt
 
 elif  [ $FILE == "pretrained-network-afhq-cat" ]; then
     OUTPUT_DIR=./model/afhq_cat/ot
     mkdir -p $OUTPUT_DIR
-    gdown --id 1FpD3cYpgtM8-KJ3Qk48fcjtr1Ne_IMOF -O $OUTPUT_DIR/model_final.pt
+    gdown 1FpD3cYpgtM8-KJ3Qk48fcjtr1Ne_IMOF -O $OUTPUT_DIR/model_final.pt
 
 elif  [ $FILE == "celeba-hq-dataset" ]; then
     DEST_DIR=./data/celeba_hq
