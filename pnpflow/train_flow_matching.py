@@ -69,7 +69,7 @@ class FLOW_MATCHING(object):
         self.model = model.to(device)
         self.coupling = self.args.model
 
-    def train_FM_model(self, train_loader, opt, num_epoch):
+    def train_FM_model(self, train_loader, opt, num_epoch, start_epoch=0):
 
         ft_extractor = None
         test_feat = None
@@ -102,7 +102,7 @@ class FLOW_MATCHING(object):
                 flush=True,
             )
 
-        tq = tqdm(range(num_epoch), desc='loss', disable=not _is_main_process(self.args))
+        tq = tqdm(range(start_epoch, num_epoch), desc='loss', disable=not _is_main_process(self.args))
         for ep in tq:
             if hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'):
                 train_loader.sampler.set_epoch(ep)
@@ -178,7 +178,26 @@ class FLOW_MATCHING(object):
                     else:
                         with open(self.save_path + 'FID_skipped.txt', 'a') as file:
                             file.write(f'Epoch: {ep}, FID skipped for dataset {self.args.dataset}\n')
+                self._save_training_state(opt, ep)
             _barrier_if_needed()
+
+    def _save_training_state(self, optimizer, completed_epoch):
+        """Write the state required to continue after a completed epoch."""
+        if not _is_main_process(self.args):
+            return
+
+        checkpoint = {
+            'format_version': 1,
+            'completed_epoch': completed_epoch,
+            'model_state_dict': _unwrap_model(self.model).state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'dataset': self.args.dataset,
+            'model': self.args.model,
+        }
+        checkpoint_path = self.model_path + 'training_state_latest.pt'
+        temporary_path = checkpoint_path + '.tmp'
+        torch.save(checkpoint, temporary_path)
+        os.replace(temporary_path, checkpoint_path)
 
     def apply_flow_matching(self, NO_samples):
         self.model.eval()
@@ -282,22 +301,63 @@ class FLOW_MATCHING(object):
         # load model
         train_loader = data_loaders['train']
 
-        # create txt file for storing all information about model
-        if _is_main_process(self.args):
-            with open(self.save_path + 'model_info.txt', 'w') as file:
-                file.write(f'PARAMETERS\n')
-                file.write(
-                    f'Number of parameters: {sum(p.numel() for p in _unwrap_model(self.model).parameters())}\n')
-                file.write(f'Number of epochs: {self.args.num_epoch}\n')
-                file.write(f'Batch size: {self.args.batch_size_train}\n')
-                file.write(f'Learning rate: {self.lr}\n')
-                file.write(f'Run name: {run_name}\n')
-                file.write(f'Model path: {self.model_path}\n')
-                file.write(f'Results path: {self.save_path}\n')
+        resume_checkpoint = getattr(self.args, 'resume_checkpoint', None)
+        if resume_checkpoint:
+            resume_checkpoint = os.path.abspath(resume_checkpoint)
+            if not os.path.isfile(resume_checkpoint):
+                raise FileNotFoundError(f"Resume checkpoint not found: {resume_checkpoint}")
 
-        # start training
+        # Create a new metadata file for fresh runs and append resume details otherwise.
+        if _is_main_process(self.args):
+            mode = 'a' if resume_checkpoint else 'w'
+            with open(self.save_path + 'model_info.txt', mode) as file:
+                if resume_checkpoint:
+                    file.write(f'Resumed from: {resume_checkpoint}\n')
+                    file.write(f'Resume target epochs: {self.args.num_epoch}\n')
+                else:
+                    file.write(f'PARAMETERS\n')
+                    file.write(
+                        f'Number of parameters: {sum(p.numel() for p in _unwrap_model(self.model).parameters())}\n')
+                    file.write(f'Number of epochs: {self.args.num_epoch}\n')
+                    file.write(f'Batch size: {self.args.batch_size_train}\n')
+                    file.write(f'Learning rate: {self.lr}\n')
+                    file.write(f'Run name: {run_name}\n')
+                    file.write(f'Model path: {self.model_path}\n')
+                    file.write(f'Results path: {self.save_path}\n')
+
+        # Start training, optionally restoring an epoch-complete training state.
         opt = torch.optim.Adam(self.model.parameters(), lr=self.args.lr)
-        self.train_FM_model(train_loader, opt, num_epoch=self.args.num_epoch)
+        start_epoch = 0
+        if resume_checkpoint:
+            _barrier_if_needed()
+            checkpoint = torch.load(resume_checkpoint, map_location=self.device)
+            required_keys = {'completed_epoch', 'model_state_dict', 'optimizer_state_dict'}
+            missing_keys = required_keys.difference(checkpoint)
+            if missing_keys:
+                raise ValueError(
+                    f"{resume_checkpoint} is not a resumable training-state checkpoint; "
+                    f"missing: {sorted(missing_keys)}"
+                )
+            if checkpoint.get('dataset') not in {None, self.args.dataset}:
+                raise ValueError("Resume checkpoint dataset does not match the requested dataset.")
+            if checkpoint.get('model') not in {None, self.args.model}:
+                raise ValueError("Resume checkpoint model does not match the requested model.")
+            _unwrap_model(self.model).load_state_dict(checkpoint['model_state_dict'])
+            opt.load_state_dict(checkpoint['optimizer_state_dict'])
+            start_epoch = int(checkpoint['completed_epoch']) + 1
+            if start_epoch >= self.args.num_epoch:
+                raise ValueError(
+                    f"Resume checkpoint completed epoch {start_epoch - 1}, which already reaches "
+                    f"the requested total of {self.args.num_epoch} epochs."
+                )
+            if _is_main_process(self.args):
+                print(
+                    f"Resuming run {run_name} from epoch {start_epoch} "
+                    f"to epoch {self.args.num_epoch - 1}.",
+                    flush=True,
+                )
+        self.train_FM_model(
+            train_loader, opt, num_epoch=self.args.num_epoch, start_epoch=start_epoch)
 
         # save final model
         if _is_main_process(self.args):
@@ -324,5 +384,4 @@ class cnf(torch.nn.Module):
             # z = self.model(x, t.squeeze())
             z = self.model(x, t.repeat(x.shape[0]))
         return z
-
 

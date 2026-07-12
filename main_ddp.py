@@ -24,8 +24,21 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Train over the full DataLoader instead of stopping after 21 batches per epoch.",
     )
+    parser.add_argument(
+        "--resume-checkpoint",
+        default=None,
+        help="Path to a training_state_latest.pt checkpoint created by this training entrypoint.",
+    )
+    parser.add_argument(
+        "--run-name",
+        default=None,
+        help="Existing run directory name to continue when --resume-checkpoint is supplied.",
+    )
     args = parser.parse_args()
     cfg.no_cap = args.no_cap
+    cfg.resume_checkpoint = args.resume_checkpoint
+    if args.run_name is not None:
+        cfg.run_name = args.run_name
 
     if args.opts is not None:
         cfg = merge_cfg_from_list(cfg, args.opts)
