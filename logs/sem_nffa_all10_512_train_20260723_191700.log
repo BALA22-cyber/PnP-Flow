@@ -1,0 +1,225 @@
+CUDA_VISIBLE_DEVICES=0,1,2,3
+NPROC_PER_NODE=4; batch_size_train=1; num_epoch=100; no_cap=1
+Dataset: /home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/data/sem_nffa_all10_512
+Run name: 20260723_191700_sem_nffa_all10_512_ot_float16
+W0723 19:15:36.224000 2709137 site-packages/torch/distributed/run.py:792] 
+W0723 19:15:36.224000 2709137 site-packages/torch/distributed/run.py:792] *****************************************
+W0723 19:15:36.224000 2709137 site-packages/torch/distributed/run.py:792] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+W0723 19:15:36.224000 2709137 site-packages/torch/distributed/run.py:792] *****************************************
+DDP training on 4 GPU(s); local_rank=0; device=cuda:0; run_name=20260723_191700_sem_nffa_all10_512_ot_float16
+Skipping FID feature extraction for custom dataset sem_nffa_all10_512.
+Training loader: samples=68040, batches=17010, batch_size=1, no_cap=True
+loss:   0%|          | 0/100 [00:00<?, ?it/s]Epoch: 0, iter: 0
+loss:   0%|          | 0/100 [00:00<?, ?it/s]
+[rank3]: Traceback (most recent call last):
+[rank3]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/main_ddp.py", line 156, in <module>
+[rank3]:     main()
+[rank3]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/main_ddp.py", line 148, in main
+[rank3]:     generative_method.train(data_loaders)
+[rank3]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/train_flow_matching.py", line 363, in train
+[rank3]:     self.train_FM_model(
+[rank3]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/train_flow_matching.py", line 148, in train_FM_model
+[rank3]:     (self.model(xt, t1.squeeze()) - (x1 - x0))**2) / x.shape[0]
+[rank3]:      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank3]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank3]:     return self._call_impl(*args, **kwargs)
+[rank3]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank3]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank3]:     return forward_call(*args, **kwargs)
+[rank3]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank3]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/parallel/distributed.py", line 1643, in forward
+[rank3]:     else self._run_ddp_forward(*inputs, **kwargs)
+[rank3]:          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank3]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/parallel/distributed.py", line 1459, in _run_ddp_forward
+[rank3]:     return self.module(*inputs, **kwargs)  # type: ignore[index]
+[rank3]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank3]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank3]:     return self._call_impl(*args, **kwargs)
+[rank3]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank3]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank3]:     return forward_call(*args, **kwargs)
+[rank3]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank3]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 447, in forward
+[rank3]:     temb = self.temb_net(temp)
+[rank3]:            ^^^^^^^^^^^^^^^^^^^
+[rank3]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank3]:     return self._call_impl(*args, **kwargs)
+[rank3]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank3]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank3]:     return forward_call(*args, **kwargs)
+[rank3]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank3]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 297, in forward
+[rank3]:     temb = get_sinusoidal_positional_embedding(temp, self.embedding_dim)
+[rank3]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank3]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 266, in get_sinusoidal_positional_embedding
+[rank3]:     assert len(timesteps.size()) == 1
+[rank3]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank3]: AssertionError
+[rank2]: Traceback (most recent call last):
+[rank2]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/main_ddp.py", line 156, in <module>
+[rank2]:     main()
+[rank2]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/main_ddp.py", line 148, in main
+[rank2]:     generative_method.train(data_loaders)
+[rank2]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/train_flow_matching.py", line 363, in train
+[rank2]:     self.train_FM_model(
+[rank2]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/train_flow_matching.py", line 148, in train_FM_model
+[rank2]:     (self.model(xt, t1.squeeze()) - (x1 - x0))**2) / x.shape[0]
+[rank2]:      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank2]:     return self._call_impl(*args, **kwargs)
+[rank2]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank2]:     return forward_call(*args, **kwargs)
+[rank2]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/parallel/distributed.py", line 1643, in forward
+[rank2]:     else self._run_ddp_forward(*inputs, **kwargs)
+[rank2]:          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/parallel/distributed.py", line 1459, in _run_ddp_forward
+[rank2]:     return self.module(*inputs, **kwargs)  # type: ignore[index]
+[rank2]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank2]:     return self._call_impl(*args, **kwargs)
+[rank2]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank2]:     return forward_call(*args, **kwargs)
+[rank2]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 447, in forward
+[rank2]:     temb = self.temb_net(temp)
+[rank2]:            ^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank2]:     return self._call_impl(*args, **kwargs)
+[rank2]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank2]:     return forward_call(*args, **kwargs)
+[rank2]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 297, in forward
+[rank2]:     temb = get_sinusoidal_positional_embedding(temp, self.embedding_dim)
+[rank2]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 266, in get_sinusoidal_positional_embedding
+[rank2]:     assert len(timesteps.size()) == 1
+[rank2]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]: AssertionError
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/main_ddp.py", line 156, in <module>
+[rank0]:     main()
+[rank0]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/main_ddp.py", line 148, in main
+[rank0]:     generative_method.train(data_loaders)
+[rank0]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/train_flow_matching.py", line 363, in train
+[rank0]:     self.train_FM_model(
+[rank0]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/train_flow_matching.py", line 148, in train_FM_model
+[rank0]:     (self.model(xt, t1.squeeze()) - (x1 - x0))**2) / x.shape[0]
+[rank0]:      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/parallel/distributed.py", line 1643, in forward
+[rank0]:     else self._run_ddp_forward(*inputs, **kwargs)
+[rank0]:          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/parallel/distributed.py", line 1459, in _run_ddp_forward
+[rank0]:     return self.module(*inputs, **kwargs)  # type: ignore[index]
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 447, in forward
+[rank0]:     temb = self.temb_net(temp)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 297, in forward
+[rank0]:     temb = get_sinusoidal_positional_embedding(temp, self.embedding_dim)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 266, in get_sinusoidal_positional_embedding
+[rank0]:     assert len(timesteps.size()) == 1
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: AssertionError
+[rank1]: Traceback (most recent call last):
+[rank1]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/main_ddp.py", line 156, in <module>
+[rank1]:     main()
+[rank1]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/main_ddp.py", line 148, in main
+[rank1]:     generative_method.train(data_loaders)
+[rank1]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/train_flow_matching.py", line 363, in train
+[rank1]:     self.train_FM_model(
+[rank1]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/train_flow_matching.py", line 148, in train_FM_model
+[rank1]:     (self.model(xt, t1.squeeze()) - (x1 - x0))**2) / x.shape[0]
+[rank1]:      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank1]:     return self._call_impl(*args, **kwargs)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank1]:     return forward_call(*args, **kwargs)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/parallel/distributed.py", line 1643, in forward
+[rank1]:     else self._run_ddp_forward(*inputs, **kwargs)
+[rank1]:          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/parallel/distributed.py", line 1459, in _run_ddp_forward
+[rank1]:     return self.module(*inputs, **kwargs)  # type: ignore[index]
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank1]:     return self._call_impl(*args, **kwargs)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank1]:     return forward_call(*args, **kwargs)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 447, in forward
+[rank1]:     temb = self.temb_net(temp)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+[rank1]:     return self._call_impl(*args, **kwargs)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+[rank1]:     return forward_call(*args, **kwargs)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 297, in forward
+[rank1]:     temb = get_sinusoidal_positional_embedding(temp, self.embedding_dim)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/pnpflow/models.py", line 266, in get_sinusoidal_positional_embedding
+[rank1]:     assert len(timesteps.size()) == 1
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]: AssertionError
+W0723 19:15:50.490000 2709137 site-packages/torch/distributed/elastic/multiprocessing/api.py:897] Sending process 2709283 closing signal SIGTERM
+W0723 19:15:50.491000 2709137 site-packages/torch/distributed/elastic/multiprocessing/api.py:897] Sending process 2709284 closing signal SIGTERM
+W0723 19:15:50.491000 2709137 site-packages/torch/distributed/elastic/multiprocessing/api.py:897] Sending process 2709286 closing signal SIGTERM
+E0723 19:15:50.769000 2709137 site-packages/torch/distributed/elastic/multiprocessing/api.py:869] failed (exitcode: 1) local_rank: 2 (pid: 2709285) of binary: /data2/marci/bselvaku/conda/envs/torchlearn/bin/python3.11
+Traceback (most recent call last):
+  File "/data2/marci/bselvaku/conda/envs/torchlearn/bin/torchrun", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 355, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/distributed/run.py", line 918, in main
+    run(args)
+  File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/distributed/run.py", line 909, in run
+    elastic_launch(
+  File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 138, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/marci/bselvaku/conda/envs/torchlearn/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 269, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/main_ddp.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-07-23_19:15:50
+  host      : marci0.eecs.utk.edu
+  rank      : 2 (local_rank: 2)
+  exitcode  : 1 (pid: 2709285)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

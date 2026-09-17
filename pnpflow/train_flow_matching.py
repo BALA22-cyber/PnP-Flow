@@ -145,7 +145,7 @@ class FLOW_MATCHING(object):
                     x1 = x
                 xt = t1 * x1 + (1 - t1) * x0
                 loss = torch.sum(
-                    (self.model(xt, t1.squeeze()) - (x1 - x0))**2) / x.shape[0]
+                    (self.model(xt, t1.reshape(-1)) - (x1 - x0))**2) / x.shape[0]
                 opt.zero_grad()
                 loss.backward()
                 opt.step()
@@ -226,8 +226,12 @@ class FLOW_MATCHING(object):
         except BaseException:
             pass
 
-        reco = utils.postprocess(self.apply_flow_matching(16), self.args)
-        gt = utils.postprocess(x[:16], self.args)
+        # A 16-image ODE sample is inexpensive at 128/256 px but can exceed GPU
+        # memory at 512 px. Keep existing behavior for established datasets and
+        # use one representative sample for 512 px and larger training runs.
+        sample_count = 1 if self.d >= 512 else 16
+        reco = utils.postprocess(self.apply_flow_matching(sample_count), self.args)
+        gt = utils.postprocess(x[:sample_count], self.args)
         utils.save_samples(reco.detach().cpu(), gt.detach().cpu(), self.save_path + 'results_samplings/' +
                            'samplings_ep_{}.pdf'.format(ep), self.args)
 
@@ -384,4 +388,3 @@ class cnf(torch.nn.Module):
             # z = self.model(x, t.squeeze())
             z = self.model(x, t.repeat(x.shape[0]))
         return z
-

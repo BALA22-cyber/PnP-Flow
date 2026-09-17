@@ -109,7 +109,9 @@ class DataLoaders:
                 shuffle=True,
                 collate_fn=custom_collate, drop_last=True)
 
-        elif self.dataset_name in ['haadf', 'haadf2', 'haadf21', 'graphne2', 'sem_nffa']:
+        elif self.dataset_name in [
+                'haadf', 'haadf2', 'haadf21', 'graphne2',
+                'sem_nffa', 'sem_nffa_all10', 'sem_nffa_all10_512']:
             # Grayscale microscopy patches saved as .npy files.
             # Expected directory layout:
             #   ./data/<dataset>/train/*.npy

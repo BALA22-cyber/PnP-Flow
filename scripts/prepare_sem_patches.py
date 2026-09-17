@@ -93,6 +93,12 @@ def main() -> None:
     parser.add_argument("--p-high", type=float, default=99.0)
     parser.add_argument("--min-std", type=float, default=0.02)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--dtype",
+        choices=("float16", "float32"),
+        default="float16",
+        help="On-disk dtype for saved patches (default: float16).",
+    )
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 
@@ -155,7 +161,7 @@ def main() -> None:
                 if float(patch.std()) < args.min_std:
                     continue
                 patch_name = f"{category}_{source_id(relative_path)}_{accepted:02d}.npy"
-                np.save(args.output_root / split / patch_name, patch.astype(np.float32))
+                np.save(args.output_root / split / patch_name, patch.astype(args.dtype))
                 patch_rows.append({
                     "patch": f"{split}/{patch_name}",
                     "source": relative_path.as_posix(),
@@ -164,6 +170,7 @@ def main() -> None:
                     "x": x,
                     "y": y,
                     "patch_size": args.patch_size,
+                    "dtype": args.dtype,
                 })
                 counts[split] += 1
                 accepted += 1
@@ -171,7 +178,7 @@ def main() -> None:
                 skipped_rows.append({"source": relative_path.as_posix(), "reason": f"only_{accepted}_patches_above_min_std"})
 
     write_csv(args.output_root / "source_manifest.csv", ["source", "category", "split", "height", "width", "p_low_value", "p_high_value"], source_rows)
-    write_csv(args.output_root / "patch_manifest.csv", ["patch", "source", "category", "split", "x", "y", "patch_size"], patch_rows)
+    write_csv(args.output_root / "patch_manifest.csv", ["patch", "source", "category", "split", "x", "y", "patch_size", "dtype"], patch_rows)
     write_csv(args.output_root / "skipped_images.csv", ["source", "reason"], skipped_rows)
 
     print(f"Input images: {len(paths)}")

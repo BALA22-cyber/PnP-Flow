@@ -1,6 +1,9 @@
 model/
 data/
 results/
+model
+results
+data/celeba
 *.zip
 *.npy
 *.h5
