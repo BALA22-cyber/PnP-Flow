@@ -1,0 +1,15 @@
+{
+  "checkpoint": "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/model/sem_nffa_all10_centerresize_512/ot/20260923_203800_sem_nffa_Patterned_surface_512_fp32_from_model20_gb8_130ep/model_70.pt",
+  "test_patch": "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/data/sem_nffa_all10_centerresize_512/test/Biological/L7_00ee245747d62518dcda5e5fa4540088.npy",
+  "box": {
+    "top": 192,
+    "left": 192,
+    "size": 128
+  },
+  "steps": 100,
+  "num_samples": 5,
+  "masked_psnr_db": 13.14235432174904,
+  "zero_fill_baseline_masked_psnr_db": 12.667507079791207,
+  "max_observed_pixel_change": 0.0,
+  "inference_seconds": 98.05141023313627
+}

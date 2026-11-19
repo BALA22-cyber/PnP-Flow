@@ -113,7 +113,87 @@ If `model_run` is omitted, `main.py` uses:
 model/<dataset>/<model>/latest_run.txt
 ```
 
-## Notes
+## Weights & Biases Logging
+
+The SEM DDP training and resume scripts enable W&B logging by default with:
+
+```text
+project: microscopic_inpainting
+entity: account associated with the logged-in API key
+batch log interval: 10 optimizer steps
+```
+
+Logged metrics include:
+
+- DDP-averaged batch training loss
+- optimizer step, epoch, iteration, and learning rate
+- DDP-averaged epoch loss
+- epoch duration and global samples processed
+- global samples per second
+- peak allocated GPU memory on rank 0
+- W&B automatic host, CPU, GPU, and process metrics
+
+Only rank 0 creates and writes the W&B run. Other DDP ranks participate in
+metric reduction but do not create duplicate runs.
+
+The launchers can be configured through environment variables:
+
+```bash
+WANDB_ENABLED=True \
+WANDB_PROJECT=microscopic_inpainting \
+WANDB_LOG_INTERVAL=10 \
+bash scripts/train_sem_nffa_all10_512_ddp.sh
+```
+
+Disable W&B for a particular run with:
+
+```bash
+WANDB_ENABLED=False bash scripts/train_sem_nffa_all10_512_ddp.sh
+```
+
+For a direct `main.py` or `main_ddp.py` command, add these options:
+
+```text
+wandb True wandb_project microscopic_inpainting wandb_log_interval 10
+```
+
+Each result directory stores `wandb_run_id.txt`. Resuming a run reuses this ID
+and continues the same dashboard run. An older run without that file creates a
+new W&B dashboard run on its first W&B-enabled resume; subsequent resumes reuse
+the new ID.
+
+## Center-resized SEM datasets
+
+`scripts/prepare_nffa_clean_resized.py` builds the 512×512 dataset from raw
+images and an existing source split manifest. It removes detected footer bands,
+center-crops to a square, resizes, and normalizes each image. Use `--help` for
+the required input, output, manifest, and contact-sheet paths; pass `--limit 0`
+to process the full manifest.
+
+`scripts/prepare_nffa_centerresize_256.py` builds the 256×256 dataset from the
+existing cleaned PNGs and processing manifest, preserving their source splits.
+Its default input path is specific to the original machine; use `--clean-root`,
+`--source-manifest`, and `--output-root` when using another filesystem. Both
+datasets store normalized grayscale float16 NPY files and must be available
+under `data/sem_nffa_all10_centerresize_256` or `data/sem_nffa_all10_centerresize_512`.
+
+Launch training with `bash scripts/train_sem_nffa_all10_centerresize_256_ddp.sh`
+or `bash scripts/train_sem_nffa_all10_centerresize_512_ddp.sh`. The launchers
+accept `CUDA_VISIBLE_DEVICES`, `NPROC_PER_NODE`, `BATCH_SIZE_TRAIN`,
+`GRADIENT_ACCUMULATION_STEPS`, `NUM_EPOCH`, `AMP_ENABLED`, and W&B environment
+variables. Select a per-GPU batch size that fits available memory. `DATASET_ROOT`
+checks for the dataset but does not change the loader path; put or link the
+dataset under `data/` as described above.
+
+The `sem_nffa_centerresize_256_box_inpainting.ipynb` and
+`sem_nffa_centerresize_512_box_inpainting.ipynb` notebooks demonstrate box
+inpainting on test images. The 256 notebook uses the latest completed run by
+default; set `RUN_NAME` and optionally `CHECKPOINT_NAME` to inspect an
+intermediate checkpoint. The 512 notebook has a specific run and checkpoint
+configured in its setup cell. Checkpoints and datasets are stored separately
+from Git and their local paths may need updating on another machine.
+
+## General notes
 
 - `main_ddp.py` currently supports OT flow-matching training only: `model ot`.
 - Keep using `main.py` for inference/evaluation.

@@ -30,4 +30,5 @@ torchmetrics
 torchvision
 tqdm
 urllib3
+wandb
 ml_collections

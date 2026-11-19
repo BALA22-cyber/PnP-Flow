@@ -1,0 +1,24 @@
+{
+  "class_name": "Tips",
+  "checkpoint": "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/model/sem_nffa_all10_centerresize_512/ot/20260923_203800_sem_nffa_Patterned_surface_512_fp32_from_model20_gb8_130ep/model_final.pt",
+  "input_image": "/data2/marci/bselvaku/nffa_sem/clean/centercrop_resized/resized/images/Tips/L5_0ac7301e1780e6e7edcca1824e707c96.png",
+  "input_split": "train",
+  "input_format": "png",
+  "normalization_reference": "/data2/marci/bselvaku/nffa_sem/clean/centercrop/Tips/L5_0ac7301e1780e6e7edcca1824e707c96.png",
+  "normalization_low_high": [
+    42.0,
+    193.0
+  ],
+  "box": {
+    "top": 192,
+    "left": 192,
+    "size": 128
+  },
+  "steps": 100,
+  "num_samples": 5,
+  "noise_std": 0.01,
+  "masked_psnr_db": 6.3052812884303435,
+  "zero_fill_baseline_masked_psnr_db": 10.57148669161065,
+  "max_known_pixel_change": 0.0,
+  "inference_seconds": 43.71802676003426
+}

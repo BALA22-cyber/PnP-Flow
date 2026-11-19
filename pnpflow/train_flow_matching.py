@@ -13,7 +13,9 @@
 import torch
 import torch.distributed as dist
 import os
+from contextlib import nullcontext
 from datetime import datetime
+from time import perf_counter
 import skimage.io as io
 import numpy as np
 import torch
@@ -34,6 +36,11 @@ except ModuleNotFoundError:
 from pnpflow.dataloaders import CelebADataset, AFHQDataset
 from torchvision import transforms
 from torchvision.utils import save_image
+
+try:
+    import wandb
+except ModuleNotFoundError:
+    wandb = None
 
 
 img_dir_celeba = './data/celeba/img_align_celeba/'
@@ -68,8 +75,83 @@ class FLOW_MATCHING(object):
         self.lr = args.lr
         self.model = model.to(device)
         self.coupling = self.args.model
+        self.wandb_run = None
 
-    def train_FM_model(self, train_loader, opt, num_epoch, start_epoch=0):
+    def _wandb_requested(self):
+        return bool(getattr(self.args, 'wandb', False))
+
+    def _init_wandb(self, run_name, start_epoch, resume_checkpoint, init_weights=None):
+        """Initialize exactly one W&B run, including for DDP training."""
+        if not self._wandb_requested() or not _is_main_process(self.args):
+            return
+        if wandb is None:
+            raise ModuleNotFoundError(
+                "W&B logging was enabled, but wandb is not installed. "
+                "Install it with `python -m pip install wandb`."
+            )
+
+        run_id_path = os.path.join(self.save_path, 'wandb_run_id.txt')
+        if os.path.isfile(run_id_path):
+            with open(run_id_path, 'r') as handle:
+                run_id = handle.read().strip()
+        else:
+            run_id = wandb.util.generate_id()
+            with open(run_id_path, 'w') as handle:
+                handle.write(run_id + '\n')
+
+        entity = getattr(self.args, 'wandb_entity', None)
+        if entity in [None, 'None', '']:
+            entity = None
+        world_size = int(getattr(self.args, 'world_size', 1))
+        accumulation_steps = int(getattr(self.args, 'gradient_accumulation_steps', 1))
+        config = {
+            'dataset': self.args.dataset,
+            'nffa_class': getattr(self.args, 'nffa_class', None),
+            'model': self.args.model,
+            'image_size': self.args.dim_image,
+            'num_channels': self.args.num_channels,
+            'num_epochs': self.args.num_epoch,
+            'start_epoch': start_epoch,
+            'learning_rate': self.lr,
+            'batch_size_per_gpu': self.args.batch_size_train,
+            'global_micro_batch_size': self.args.batch_size_train * world_size,
+            'gradient_accumulation_steps': accumulation_steps,
+            'global_batch_size': self.args.batch_size_train * world_size * accumulation_steps,
+            'world_size': world_size,
+            'coupling': self.coupling,
+            'full_dataloader': bool(getattr(self.args, 'no_cap', False)),
+            'resumed': bool(resume_checkpoint),
+            'warm_started_from_weights': bool(init_weights),
+            'initial_weights_path': init_weights,
+            'amp': bool(getattr(self.args, 'amp', False)),
+        }
+        self.wandb_run = wandb.init(
+            project=getattr(self.args, 'wandb_project', 'microscopic_inpainting'),
+            entity=entity,
+            name=run_name,
+            id=run_id,
+            resume='allow',
+            dir=self.save_path,
+            config=config,
+            tags=[self.args.dataset, self.args.model, f'{self.args.dim_image}px'],
+            job_type='train',
+        )
+        wandb.define_metric('train/global_step')
+        wandb.define_metric('train/*', step_metric='train/global_step')
+        wandb.define_metric('epoch/index')
+        wandb.define_metric('epoch/*', step_metric='epoch/index')
+        print(
+            f'W&B logging enabled: project={self.wandb_run.project}; '
+            f'run={self.wandb_run.name}; url={self.wandb_run.url}',
+            flush=True,
+        )
+
+    def _finish_wandb(self):
+        if self.wandb_run is not None and _is_main_process(self.args):
+            self.wandb_run.finish()
+            self.wandb_run = None
+
+    def train_FM_model(self, train_loader, opt, num_epoch, start_epoch=0, scaler=None):
 
         ft_extractor = None
         test_feat = None
@@ -102,8 +184,24 @@ class FLOW_MATCHING(object):
                 flush=True,
             )
 
+        wandb_requested = self._wandb_requested()
+        use_amp = bool(getattr(self.args, 'amp', False)) and self.device.type == 'cuda'
+        accumulation_steps = max(1, int(getattr(self.args, 'gradient_accumulation_steps', 1)))
+        if scaler is None:
+            scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
+        wandb_log_interval = max(1, int(getattr(self.args, 'wandb_log_interval', 10)))
+        effective_batches = num_batches
+        if effective_batches is not None and not getattr(self.args, 'no_cap', False):
+            effective_batches = min(effective_batches, 21)
+
         tq = tqdm(range(start_epoch, num_epoch), desc='loss', disable=not _is_main_process(self.args))
         for ep in tq:
+            epoch_started = perf_counter()
+            epoch_loss_sum = 0.0
+            epoch_batches = 0
+            epoch_samples = 0
+            if self.device.type == 'cuda':
+                torch.cuda.reset_peak_memory_stats(self.device)
             if hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'):
                 train_loader.sampler.set_epoch(ep)
             for iteration, (x, labels) in enumerate(train_loader):
@@ -144,21 +242,151 @@ class FLOW_MATCHING(object):
                     x0 = z
                     x1 = x
                 xt = t1 * x1 + (1 - t1) * x0
-                loss = torch.sum(
-                    (self.model(xt, t1.reshape(-1)) - (x1 - x0))**2) / x.shape[0]
-                opt.zero_grad()
-                loss.backward()
-                opt.step()
+                if iteration % accumulation_steps == 0:
+                    opt.zero_grad()
+                is_last_microbatch = effective_batches is not None and iteration + 1 == effective_batches
+                is_update_step = (iteration + 1) % accumulation_steps == 0 or is_last_microbatch
+                if effective_batches is not None:
+                    window_start = (iteration // accumulation_steps) * accumulation_steps
+                    window_size = min(accumulation_steps, effective_batches - window_start)
+                else:
+                    window_size = accumulation_steps
+                sync_context = nullcontext()
+                if hasattr(self.model, 'no_sync') and not is_update_step:
+                    sync_context = self.model.no_sync()
+                with sync_context:
+                    with torch.amp.autocast(
+                            device_type='cuda', dtype=torch.float16, enabled=use_amp):
+                        prediction = self.model(xt, t1.reshape(-1))
+                    # Keep the reduction in FP32: summing 512 x 512 float16 errors
+                    # can overflow even when the forward pass itself is stable.
+                    residual = prediction.float() - (x1 - x0).float()
+                    loss = torch.sum(residual ** 2) / x.shape[0]
+                    nonfinite_loss = torch.tensor(
+                        int(not torch.isfinite(loss.detach()).item()),
+                        device=self.device,
+                        dtype=torch.int32,
+                    )
+                    if _is_dist_ready():
+                        dist.all_reduce(nonfinite_loss, op=dist.ReduceOp.MAX)
+                    if nonfinite_loss.item():
+                        raise FloatingPointError(
+                            f'Non-finite loss detected at epoch {ep}, iteration {iteration}; '
+                            'aborting before backward or checkpointing corrupted weights.'
+                        )
+                    backward_loss = loss / window_size
+                    if use_amp:
+                        scaler.scale(backward_loss).backward()
+                    else:
+                        backward_loss.backward()
+                if is_update_step:
+                    if use_amp:
+                        # Inspect unscaled gradients so expected loss-scale
+                        # overflows are handled by backing off the scale.
+                        scaler.unscale_(opt)
+                    nonfinite_grad = torch.zeros((), device=self.device, dtype=torch.int32)
+                    for parameter in _unwrap_model(self.model).parameters():
+                        if parameter.grad is not None:
+                            nonfinite_grad = torch.maximum(
+                                nonfinite_grad,
+                                (~torch.isfinite(parameter.grad).all()).to(torch.int32),
+                            )
+                    if _is_dist_ready():
+                        dist.all_reduce(nonfinite_grad, op=dist.ReduceOp.MAX)
+                    skip_amp_update = False
+                    if nonfinite_grad.item() and use_amp:
+                        # All ranks make the same decision after reducing the
+                        # flag; update the scaler and leave the weights intact.
+                        scaler.update(
+                            new_scale=scaler.get_scale() * scaler.get_backoff_factor()
+                        )
+                        skip_amp_update = True
+                        if _is_main_process(self.args):
+                            print(
+                                f'WARNING: non-finite AMP gradients at epoch {ep}, '
+                                f'iteration {iteration}; skipped update and reduced scale.',
+                                flush=True,
+                            )
+                    elif nonfinite_grad.item():
+                        raise FloatingPointError(
+                            f'Non-finite gradient detected at epoch {ep}, iteration {iteration}; '
+                            'aborting before the optimizer update.'
+                        )
+                    if use_amp and not skip_amp_update:
+                        scaler.step(opt)
+                        scaler.update()
+                    elif not use_amp:
+                        opt.step()
+
+                loss_value = float(loss.detach().item())
+                epoch_loss_sum += loss_value
+                epoch_batches += 1
+                epoch_samples += int(x.shape[0])
+
+                if wandb_requested and iteration % (wandb_log_interval * accumulation_steps) == 0:
+                    distributed_loss = loss.detach().clone()
+                    if _is_dist_ready():
+                        dist.all_reduce(distributed_loss, op=dist.ReduceOp.SUM)
+                        distributed_loss /= dist.get_world_size()
+                    if _is_main_process(self.args) and self.wandb_run is not None:
+                        updates_per_epoch = (
+                            (effective_batches + accumulation_steps - 1) // accumulation_steps
+                            if effective_batches is not None else 0
+                        )
+                        global_step = ep * updates_per_epoch + iteration // accumulation_steps
+                        self.wandb_run.log({
+                            'train/global_step': global_step,
+                            'train/loss': float(distributed_loss.item()),
+                            'train/epoch': ep,
+                            'train/iteration': iteration,
+                            'train/gradient_accumulation_steps': accumulation_steps,
+                            'train/learning_rate': float(opt.param_groups[0]['lr']),
+                        })
 
                 # save loss in txt file
                 if _is_main_process(self.args):
                     with open(self.save_path + 'loss_training.txt', 'a') as file:
                         file.write(
-                            f'Epoch: {ep}, iter: {iteration}, Loss: {loss.item()}\n')
+                            f'Epoch: {ep}, iter: {iteration}, Loss: {loss_value}\n')
+
+            if wandb_requested:
+                epoch_elapsed = perf_counter() - epoch_started
+                stats = torch.tensor(
+                    [epoch_loss_sum, epoch_batches, epoch_samples, epoch_elapsed],
+                    dtype=torch.float64,
+                    device=self.device,
+                )
+                if _is_dist_ready():
+                    dist.all_reduce(stats[:3], op=dist.ReduceOp.SUM)
+                    dist.all_reduce(stats[3:], op=dist.ReduceOp.MAX)
+                if _is_main_process(self.args) and self.wandb_run is not None:
+                    total_batches = max(float(stats[1].item()), 1.0)
+                    elapsed = max(float(stats[3].item()), 1e-9)
+                    metrics = {
+                        'epoch/index': ep,
+                        'epoch/loss_mean': float(stats[0].item()) / total_batches,
+                        'epoch/duration_seconds': elapsed,
+                        'epoch/samples': int(stats[2].item()),
+                        'epoch/samples_per_second': float(stats[2].item()) / elapsed,
+                    }
+                    if self.device.type == 'cuda':
+                        metrics['epoch/peak_gpu_memory_gib_rank0'] = (
+                            torch.cuda.max_memory_allocated(self.device) / (1024 ** 3)
+                        )
+                    self.wandb_run.log(metrics)
 
             # save samples, plot them, and compute FID on small dataset
             if _is_main_process(self.args):
-                self.sample_plot(x, ep)
+                # Sampling is diagnostic; an ODE solver failure must not discard
+                # a completed training epoch or prevent its resume checkpoint.
+                try:
+                    self.sample_plot(x, ep)
+                except Exception as exc:
+                    print(
+                        f"WARNING: sample generation failed at epoch {ep}; "
+                        f"continuing training and saving checkpoint: {exc}",
+                        flush=True,
+                    )
                 if ep % 5 == 0:
                     # save model
                     torch.save(_unwrap_model(self.model).state_dict(),
@@ -178,10 +406,10 @@ class FLOW_MATCHING(object):
                     else:
                         with open(self.save_path + 'FID_skipped.txt', 'a') as file:
                             file.write(f'Epoch: {ep}, FID skipped for dataset {self.args.dataset}\n')
-                self._save_training_state(opt, ep)
+                self._save_training_state(opt, ep, scaler)
             _barrier_if_needed()
 
-    def _save_training_state(self, optimizer, completed_epoch):
+    def _save_training_state(self, optimizer, completed_epoch, scaler=None):
         """Write the state required to continue after a completed epoch."""
         if not _is_main_process(self.args):
             return
@@ -191,7 +419,9 @@ class FLOW_MATCHING(object):
             'completed_epoch': completed_epoch,
             'model_state_dict': _unwrap_model(self.model).state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
+            'scaler_state_dict': scaler.state_dict() if scaler is not None and scaler.is_enabled() else None,
             'dataset': self.args.dataset,
+            'nffa_class': getattr(self.args, 'nffa_class', None),
             'model': self.args.model,
         }
         checkpoint_path = self.model_path + 'training_state_latest.pt'
@@ -306,10 +536,17 @@ class FLOW_MATCHING(object):
         train_loader = data_loaders['train']
 
         resume_checkpoint = getattr(self.args, 'resume_checkpoint', None)
+        init_weights = getattr(self.args, 'init_weights', None)
+        if resume_checkpoint and init_weights:
+            raise ValueError('Choose either --resume-checkpoint or --init-weights, not both.')
         if resume_checkpoint:
             resume_checkpoint = os.path.abspath(resume_checkpoint)
             if not os.path.isfile(resume_checkpoint):
                 raise FileNotFoundError(f"Resume checkpoint not found: {resume_checkpoint}")
+        if init_weights:
+            init_weights = os.path.abspath(init_weights)
+            if not os.path.isfile(init_weights):
+                raise FileNotFoundError(f"Initial weights not found: {init_weights}")
 
         # Create a new metadata file for fresh runs and append resume details otherwise.
         if _is_main_process(self.args):
@@ -328,9 +565,16 @@ class FLOW_MATCHING(object):
                     file.write(f'Run name: {run_name}\n')
                     file.write(f'Model path: {self.model_path}\n')
                     file.write(f'Results path: {self.save_path}\n')
+                    if getattr(self.args, 'nffa_class', None):
+                        file.write(f'NFFA class filter: {self.args.nffa_class}\n')
+                    if init_weights:
+                        file.write(f'Warm-start weights: {init_weights}\n')
+                        file.write('Optimizer state: freshly initialized\n')
 
         # Start training, optionally restoring an epoch-complete training state.
         opt = torch.optim.Adam(self.model.parameters(), lr=self.args.lr)
+        use_amp = bool(getattr(self.args, 'amp', False)) and self.device.type == 'cuda'
+        scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
         start_epoch = 0
         if resume_checkpoint:
             _barrier_if_needed()
@@ -348,6 +592,8 @@ class FLOW_MATCHING(object):
                 raise ValueError("Resume checkpoint model does not match the requested model.")
             _unwrap_model(self.model).load_state_dict(checkpoint['model_state_dict'])
             opt.load_state_dict(checkpoint['optimizer_state_dict'])
+            if scaler.is_enabled() and checkpoint.get('scaler_state_dict'):
+                scaler.load_state_dict(checkpoint['scaler_state_dict'])
             start_epoch = int(checkpoint['completed_epoch']) + 1
             if start_epoch >= self.args.num_epoch:
                 raise ValueError(
@@ -360,8 +606,27 @@ class FLOW_MATCHING(object):
                     f"to epoch {self.args.num_epoch - 1}.",
                     flush=True,
                 )
+        elif init_weights:
+            state_dict = torch.load(init_weights, map_location='cpu', weights_only=True)
+            _unwrap_model(self.model).load_state_dict(state_dict, strict=True)
+            nonfinite_parameters = sum(
+                int((~torch.isfinite(parameter)).sum().item())
+                for parameter in _unwrap_model(self.model).parameters()
+            )
+            if nonfinite_parameters:
+                raise ValueError(
+                    f'Initial weights contain {nonfinite_parameters} non-finite parameter values.'
+                )
+            if _is_main_process(self.args):
+                print(
+                    f'Warm-starting run {run_name} from finite weights {init_weights}; '
+                    'optimizer and epoch counter start fresh.',
+                    flush=True,
+                )
+        self._init_wandb(run_name, start_epoch, resume_checkpoint, init_weights)
         self.train_FM_model(
-            train_loader, opt, num_epoch=self.args.num_epoch, start_epoch=start_epoch)
+            train_loader, opt, num_epoch=self.args.num_epoch,
+            start_epoch=start_epoch, scaler=scaler)
 
         # save final model
         if _is_main_process(self.args):
@@ -374,6 +639,7 @@ class FLOW_MATCHING(object):
                 with open(os.path.join(base_dir, 'latest_run.txt'), 'w') as file:
                     file.write(run_name + '\n')
         _barrier_if_needed()
+        self._finish_wandb()
 
 
 

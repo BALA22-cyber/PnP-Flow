@@ -30,6 +30,11 @@ def parse_args() -> argparse.Namespace:
         help="Path to a training_state_latest.pt checkpoint created by this training entrypoint.",
     )
     parser.add_argument(
+        "--init-weights",
+        default=None,
+        help="Initialize model weights from a state_dict, using a fresh optimizer and scaler.",
+    )
+    parser.add_argument(
         "--run-name",
         default=None,
         help="Existing run directory name to continue when --resume-checkpoint is supplied.",
@@ -37,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     cfg.no_cap = args.no_cap
     cfg.resume_checkpoint = args.resume_checkpoint
+    cfg.init_weights = args.init_weights
     if args.run_name is not None:
         cfg.run_name = args.run_name
 
@@ -136,7 +142,8 @@ def main():
 
     args.batch_size = args.batch_size_train
     data_loaders = DataLoaders(
-        args.dataset, args.batch_size_train, args.batch_size_train).load_data()
+        args.dataset, args.batch_size_train, args.batch_size_train,
+        nffa_class=getattr(args, 'nffa_class', None)).load_data()
     data_loaders["train"] = make_distributed_train_loader(data_loaders["train"], args)
 
     if args.model == "ot":

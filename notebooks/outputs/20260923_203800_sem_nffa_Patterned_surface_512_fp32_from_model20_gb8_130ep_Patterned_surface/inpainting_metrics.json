@@ -1,0 +1,66 @@
+{
+  "class_name": "Patterned_surface",
+  "test_patch": "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/data/sem_nffa_all10_centerresize_512/test/Patterned_surface/L1_00258fcc3b10a635d35c814c1a4f0e07.npy",
+  "checkpoints": {
+    "all_class": "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/model/sem_nffa_all10_centerresize_512/ot/20260923_140640_sem_nffa_all10_centerresize_512_ot_fp32_warmstart_model20_gb8_29ep/model_final.pt",
+    "single_class": "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/model/sem_nffa_all10_centerresize_512/ot/20260923_203800_sem_nffa_Patterned_surface_512_fp32_from_model20_gb8_130ep/model_final.pt"
+  },
+  "steps": 100,
+  "noise_std": 0.001,
+  "lr_pnp": 1.0,
+  "alpha": 1.0,
+  "num_samples": 1,
+  "results": [
+    {
+      "size": 64,
+      "top": 224,
+      "left": 224,
+      "all_class": {
+        "masked_psnr_db": 22.677864793858298,
+        "zero_fill_baseline_psnr_db": 23.737723261264847,
+        "max_known_pixel_change": 0.0,
+        "seconds": 8.96480776136741
+      },
+      "single_class": {
+        "masked_psnr_db": 22.758937858577827,
+        "zero_fill_baseline_psnr_db": 23.737723261264847,
+        "max_known_pixel_change": 0.0,
+        "seconds": 8.744986545760185
+      }
+    },
+    {
+      "size": 128,
+      "top": 192,
+      "left": 192,
+      "all_class": {
+        "masked_psnr_db": 14.775473946790854,
+        "zero_fill_baseline_psnr_db": 16.86257231813123,
+        "max_known_pixel_change": 0.0,
+        "seconds": 8.752444858662784
+      },
+      "single_class": {
+        "masked_psnr_db": 13.199878891527943,
+        "zero_fill_baseline_psnr_db": 16.86257231813123,
+        "max_known_pixel_change": 0.0,
+        "seconds": 8.753397234715521
+      }
+    },
+    {
+      "size": 256,
+      "top": 128,
+      "left": 128,
+      "all_class": {
+        "masked_psnr_db": 15.792177696791672,
+        "zero_fill_baseline_psnr_db": 15.455118995319078,
+        "max_known_pixel_change": 0.0,
+        "seconds": 8.75757712405175
+      },
+      "single_class": {
+        "masked_psnr_db": 7.649520112973036,
+        "zero_fill_baseline_psnr_db": 15.455118995319078,
+        "max_known_pixel_change": 0.0,
+        "seconds": 8.757222233805805
+      }
+    }
+  ]
+}

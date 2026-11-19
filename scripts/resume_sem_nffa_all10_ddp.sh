@@ -14,6 +14,9 @@ nproc_per_node="${NPROC_PER_NODE:-4}"
 batch_size_train="${BATCH_SIZE_TRAIN:-16}"
 target_epochs="${TARGET_EPOCHS:-100}"
 run_name="${RUN_NAME:-}"
+wandb_enabled="${WANDB_ENABLED:-True}"
+wandb_project="${WANDB_PROJECT:-microscopic_inpainting}"
+wandb_log_interval="${WANDB_LOG_INTERVAL:-10}"
 
 if [[ ! -d "${dataset_root}/train" ]] || ! compgen -G "${dataset_root}/train/*.npy" > /dev/null; then
     echo "Prepared all-category SEM train patches were not found at: ${dataset_root}" >&2
@@ -39,6 +42,7 @@ echo "CUDA_VISIBLE_DEVICES=${cuda_visible_devices}"
 echo "NPROC_PER_NODE=${nproc_per_node}; batch_size_train=${batch_size_train}; target_epochs=${target_epochs}"
 echo "Run name: ${run_name}"
 echo "Resume checkpoint: ${resume_checkpoint}"
+echo "W&B: enabled=${wandb_enabled}; project=${wandb_project}; log_interval=${wandb_log_interval}"
 cd "${repo_root}"
 CUDA_VISIBLE_DEVICES="${cuda_visible_devices}" torchrun --standalone \
     --nproc_per_node="${nproc_per_node}" \
@@ -52,4 +56,7 @@ CUDA_VISIBLE_DEVICES="${cuda_visible_devices}" torchrun --standalone \
     train True \
     eval False \
     batch_size_train "${batch_size_train}" \
-    num_epoch "${target_epochs}"
+    num_epoch "${target_epochs}" \
+    wandb "${wandb_enabled}" \
+    wandb_project "${wandb_project}" \
+    wandb_log_interval "${wandb_log_interval}"

@@ -14,6 +14,9 @@ batch_size_train="${BATCH_SIZE_TRAIN:-1}"
 num_epoch="${NUM_EPOCH:-100}"
 no_cap="${NO_CAP:-1}"
 run_name="${RUN_NAME:-}"
+wandb_enabled="${WANDB_ENABLED:-True}"
+wandb_project="${WANDB_PROJECT:-microscopic_inpainting}"
+wandb_log_interval="${WANDB_LOG_INTERVAL:-10}"
 
 if [[ ! -d "${dataset_root}/train" ]] || ! compgen -G "${dataset_root}/train/*.npy" > /dev/null; then
     echo "Prepared 512 px all-category SEM train patches were not found at: ${dataset_root}" >&2
@@ -45,11 +48,15 @@ command+=(
     eval False
     batch_size_train "${batch_size_train}"
     num_epoch "${num_epoch}"
+    wandb "${wandb_enabled}"
+    wandb_project "${wandb_project}"
+    wandb_log_interval "${wandb_log_interval}"
 )
 
 echo "CUDA_VISIBLE_DEVICES=${cuda_visible_devices}"
 echo "NPROC_PER_NODE=${nproc_per_node}; batch_size_train=${batch_size_train}; num_epoch=${num_epoch}; no_cap=${no_cap}"
 echo "Dataset: ${dataset_root}"
+echo "W&B: enabled=${wandb_enabled}; project=${wandb_project}; log_interval=${wandb_log_interval}"
 if [[ -n "${run_name}" ]]; then
     echo "Run name: ${run_name}"
 fi

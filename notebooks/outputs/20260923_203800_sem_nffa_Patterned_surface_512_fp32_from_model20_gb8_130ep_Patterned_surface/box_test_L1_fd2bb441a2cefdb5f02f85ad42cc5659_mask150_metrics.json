@@ -1,0 +1,21 @@
+{
+  "class_name": "Patterned_surface",
+  "checkpoint": "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/model/sem_nffa_all10_centerresize_512/ot/20260923_203800_sem_nffa_Patterned_surface_512_fp32_from_model20_gb8_130ep/model_final.pt",
+  "input_image": "/data2/marci/bselvaku/nffa_sem/clean/centercrop_resized/resized/processed/test/Patterned_surface/L1_fd2bb441a2cefdb5f02f85ad42cc5659.npy",
+  "input_split": "test",
+  "input_format": "npy",
+  "normalization_reference": "stored normalized NPY",
+  "normalization_low_high": null,
+  "box": {
+    "top": 100,
+    "left": 192,
+    "size": 150
+  },
+  "steps": 100,
+  "num_samples": 5,
+  "noise_std": 0.01,
+  "masked_psnr_db": 9.408154565931481,
+  "zero_fill_baseline_masked_psnr_db": 16.686651116746706,
+  "max_known_pixel_change": 0.0,
+  "inference_seconds": 44.264972403179854
+}

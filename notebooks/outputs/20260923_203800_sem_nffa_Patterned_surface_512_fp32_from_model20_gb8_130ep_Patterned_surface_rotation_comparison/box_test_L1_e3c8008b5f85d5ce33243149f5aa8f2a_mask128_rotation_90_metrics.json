@@ -1,0 +1,29 @@
+{
+  "checkpoint": "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/model/sem_nffa_all10_centerresize_512/ot/20260923_203800_sem_nffa_Patterned_surface_512_fp32_from_model20_gb8_130ep/model_final.pt",
+  "input_image": "/data2/marci/bselvaku/nffa_sem/clean/centercrop_resized/resized/processed/test/Patterned_surface/L1_e3c8008b5f85d5ce33243149f5aa8f2a.npy",
+  "input_split": "test",
+  "rotation_degrees_ccw": 90,
+  "mask_rotated_with_image": true,
+  "box": {
+    "top": 100,
+    "left": 120,
+    "size": 128
+  },
+  "steps_pnp": 100,
+  "num_samples": 5,
+  "seed": 0,
+  "original_masked": {
+    "mse": 0.6106714606285095,
+    "mae": 0.5607682466506958,
+    "psnr_db": 8.16252367354981,
+    "max_observed_pixel_change": 0.0
+  },
+  "rotated_masked": {
+    "mse": 0.7751898169517517,
+    "mae": 0.6623204946517944,
+    "psnr_db": 7.1265193222683,
+    "max_observed_pixel_change": 0.0
+  },
+  "rotation_back_reconstruction_mae_in_mask": 0.12965786457061768,
+  "rotation_inference_seconds": 44.180946776643395
+}

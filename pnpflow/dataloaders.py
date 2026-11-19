@@ -12,13 +12,15 @@ import skimage.io as io
 import matplotlib.pyplot as plt
 import pickle
 import logging
+from pathlib import Path
 
 
 class DataLoaders:
-    def __init__(self, dataset_name, batch_size_train, batch_size_test):
+    def __init__(self, dataset_name, batch_size_train, batch_size_test, nffa_class=None):
         self.dataset_name = dataset_name
         self.batch_size_train = batch_size_train
         self.batch_size_test = batch_size_test
+        self.nffa_class = nffa_class
 
     def load_data(self):
 
@@ -111,16 +113,36 @@ class DataLoaders:
 
         elif self.dataset_name in [
                 'haadf', 'haadf2', 'haadf21', 'graphne2',
-                'sem_nffa', 'sem_nffa_all10', 'sem_nffa_all10_512']:
+                'sem_nffa', 'sem_nffa_all10', 'sem_nffa_all10_512',
+                'sem_nffa_all10_centerresize_512',
+                'sem_nffa_all10_centerresize_256']:
             # Grayscale microscopy patches saved as .npy files.
             # Expected directory layout:
             #   ./data/<dataset>/train/*.npy
             #   ./data/<dataset>/val/*.npy
             #   ./data/<dataset>/test/*.npy
+            # Category subdirectories are also supported.
             base_dir = f'./data/{self.dataset_name}'
-            train_dataset = HAADFNpyDataset(os.path.join(base_dir, 'train'))
-            val_dataset = HAADFNpyDataset(os.path.join(base_dir, 'val'))
-            test_dataset = HAADFNpyDataset(os.path.join(base_dir, 'test'))
+            if self.nffa_class:
+                split_dirs = {
+                    split: os.path.join(base_dir, split, self.nffa_class)
+                    for split in ('train', 'val', 'test')
+                }
+                missing_dirs = [
+                    path for path in split_dirs.values() if not os.path.isdir(path)
+                ]
+                if missing_dirs:
+                    raise FileNotFoundError(
+                        f"NFFA class '{self.nffa_class}' is missing split directories: {missing_dirs}"
+                    )
+            else:
+                split_dirs = {
+                    split: os.path.join(base_dir, split)
+                    for split in ('train', 'val', 'test')
+                }
+            train_dataset = HAADFNpyDataset(split_dirs['train'])
+            val_dataset = HAADFNpyDataset(split_dirs['val'])
+            test_dataset = HAADFNpyDataset(split_dirs['test'])
 
             train_loader = DataLoader(
                 train_dataset,
@@ -259,10 +281,12 @@ class HAADFNpyDataset(Dataset):
         if not os.path.isdir(data_dir):
             raise FileNotFoundError(
                 f"Microscopy directory not found: {data_dir}. Expected .npy patches under train/val/test.")
-        self.files = sorted([
-            f for f in os.listdir(data_dir)
-            if f.lower().endswith('.npy')
-        ])
+        # Support both the original flat layout and the organized
+        # split/category layout used by the cleaned NFFA dataset.
+        self.files = sorted(
+            [path for path in Path(data_dir).rglob('*.npy') if path.is_file()],
+            key=lambda path: str(path),
+        )
         if len(self.files) == 0:
             raise FileNotFoundError(f"No .npy patch files found in {data_dir}")
 
@@ -270,7 +294,7 @@ class HAADFNpyDataset(Dataset):
         return len(self.files)
 
     def __getitem__(self, idx):
-        path = os.path.join(self.data_dir, self.files[idx])
+        path = self.files[idx]
         arr = np.load(path).astype(np.float32)
 
         if arr.ndim == 2:

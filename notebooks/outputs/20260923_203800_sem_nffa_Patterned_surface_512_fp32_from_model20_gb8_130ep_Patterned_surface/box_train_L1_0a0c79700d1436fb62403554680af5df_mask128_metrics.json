@@ -1,0 +1,24 @@
+{
+  "class_name": "Patterned_surface",
+  "checkpoint": "/home/bselvaku/projects/microscopic_inpainting/modified_code/PnP-Flow/model/sem_nffa_all10_centerresize_512/ot/20260923_203800_sem_nffa_Patterned_surface_512_fp32_from_model20_gb8_130ep/model_125.pt",
+  "input_image": "/data2/marci/bselvaku/nffa_sem/clean/centercrop/resized/images/Patterned_surface/L1_0a0c79700d1436fb62403554680af5df.png",
+  "input_split": "train",
+  "input_format": "png",
+  "normalization_reference": "/data2/marci/bselvaku/nffa_sem/clean/centercrop/Patterned_surface/L1_0a0c79700d1436fb62403554680af5df.png",
+  "normalization_low_high": [
+    8.0,
+    160.0
+  ],
+  "box": {
+    "top": 192,
+    "left": 192,
+    "size": 128
+  },
+  "steps": 100,
+  "num_samples": 5,
+  "noise_std": 0.01,
+  "masked_psnr_db": 10.230268898140295,
+  "zero_fill_baseline_masked_psnr_db": 10.037640284094522,
+  "max_known_pixel_change": 0.0,
+  "inference_seconds": 43.77776616998017
+}

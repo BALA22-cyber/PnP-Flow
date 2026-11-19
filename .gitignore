@@ -25,3 +25,6 @@ demo/iter*.png
 *.pt
 
 build/
+
+api/
+logs/

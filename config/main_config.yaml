@@ -1,5 +1,6 @@
 EVAL:
     dataset: 'afhq_cat'                # dataset name (mnist, celeba, celeba_hq, afhq_cat)
+    nffa_class: None                  # optional class subdirectory for NFFA microscopy training/evaluation
     model: 'ot'             #model (ot, rectified)
     root: './'                      # root directory for the experiment
     output_root: './'                      # root directory for the experiment
@@ -23,3 +24,9 @@ EVAL:
     compute_memory: False
     compute_time: False
     save_results: True
+    wandb: False                       # enable online Weights & Biases training logging
+    wandb_project: 'microscopic_inpainting'
+    wandb_entity: None                 # use the entity associated with the logged-in account
+    wandb_log_interval: 10             # optimizer steps between batch-level logs
+    amp: False                          # CUDA float16 autocast with FP32 weights/loss/optimizer
+    gradient_accumulation_steps: 1      # effective batch = per-GPU batch * GPUs * accumulation
